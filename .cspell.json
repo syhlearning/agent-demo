@@ -1,9 +1,12 @@
 {
   "words": [
     "checkpointer",
+    "DASHSCOPE",
     "deepseek",
     "dotenv",
+    "jsonplus",
     "langchain",
+    "serde",
     "tavily"
   ]
 }

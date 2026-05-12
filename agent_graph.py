@@ -1,29 +1,52 @@
 import sys
 import os
+import warnings
 
 sys.path.insert(0, os.path.dirname(__file__))
 
 from dotenv import load_dotenv
+from langchain_core._api.deprecation import LangChainPendingDeprecationWarning
+from langchain_core.load.load import Reviver
+
+warnings.filterwarnings(
+    "ignore",
+    message="The default value of .*allowed_objects.* will change.*",
+    category=LangChainPendingDeprecationWarning,
+)
+
 from langchain.chat_models import init_chat_model
 from langchain.agents import create_agent
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.serde import jsonplus
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from datetime import datetime
-from tools import output_formatter, get_weather, web_search
+from tools import (
+    output_formatter,
+    get_weather,
+    web_search,
+    save_user_info,
+    get_user_info,
+    delete_user_info,
+    generate_wan_image,
+)
 # 持久存储（长期记忆）
 from langgraph.store.postgres import PostgresStore
+
+jsonplus.LC_REVIVER = Reviver(allowed_objects="core")
 
 
 # 加载 .env 文件
 load_dotenv()
 
 DB_URL = os.getenv("DATABASE_URL")
+USER_ID = os.getenv("USER_ID", "default-user")
 
-# 初始化聊天模型
+# 初始化聊天模型。wan2.7-image-pro 是图片模型，通过 generate_wan_image 工具调用。
 model = init_chat_model(
     model="deepseek-chat",
     model_provider="openai",
     api_key=os.getenv("DEEPSEEK_API_KEY"),
-    base_url="https://api.deepseek.com",
+    base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
 )
 
 
@@ -38,17 +61,33 @@ def main():
 
         agent = create_agent(
             model=model,
-            tools=[output_formatter, get_weather, web_search],
+            tools=[
+                output_formatter,
+                get_weather,
+                web_search,
+                save_user_info,
+                get_user_info,
+                delete_user_info,
+                generate_wan_image,
+            ],
             system_prompt=(
                 f"你是一个有帮助的AI助手。当前日期和时间:{datetime.now().strftime('%Y年%m月%d日 %A %H:%M')}。"
                 "在需要格式化输出时可以使用 output_formatter 工具，但普通对话直接回复即可。"
                 "当使用 web_search 工具搜索信息后，回答中必须附上信息来源的网址链接。"
+                "当用户要求生成图片、编辑图片、根据参考图生成图片时，使用 generate_wan_image 工具调用 wan2.7-image-pro。"
+                "当用户主动告诉你稳定的个人信息（例如姓名、所在城市、职业、长期偏好、沟通习惯）时，"
+                "使用 save_user_info 工具长期保存。不要保存密码、密钥、身份证号、银行卡号等敏感信息。"
+                "当回答需要个性化信息，或用户问你是否记得某个信息时，先使用 get_user_info 工具读取长期记忆。"
+                "当用户要求忘记或删除某项个人信息时，使用 delete_user_info 工具。"
+                "不要显示的告诉我要查看你的信息或者我可以帮你存储你的信息，而是直接在对话中使用工具来存储和读取信息，来让对话更自然流畅。只需要回答用户的问题就行"
             ),
-            checkpointer=MemorySaver(),
+            checkpointer=MemorySaver(
+                serde=JsonPlusSerializer(allowed_msgpack_modules=None)
+            ),
             store=store,
         )
 
-        config = {"configurable": {"thread_id": "chat-1"}}
+        config = {"configurable": {"thread_id": f"chat-{USER_ID}", "user_id": USER_ID}}
 
         while True:
             user_input = input("你: ").strip()
