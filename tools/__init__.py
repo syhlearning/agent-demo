@@ -6,6 +6,7 @@ import os
 import json
 from tavily import TavilyClient
 from datetime import datetime
+from db.vector_store import upsert as _vs_upsert, search as _vs_search, upsert_document as _vs_upsert_document
 
 
 def _get_user_id(runtime: ToolRuntime) -> str:
@@ -257,6 +258,55 @@ def get_weather(city: str) -> str:
         return resp.text.strip()
     except requests.RequestException:
         return "天气服务暂时不可用"
+
+
+@tool
+def save_knowledge(id: str, text: str) -> str:
+    """把一段知识、笔记或文档永久保存到向量数据库，以便日后语义检索。
+
+    Args:
+        id: 唯一标识符，例如 "note-1"、"doc-python-tips"
+        text: 要保存的内容
+    """
+    try:
+        _vs_upsert(id, text)
+        return f"已保存知识：{id}"
+    except Exception as e:
+        return f"保存失败：{e}"
+
+
+@tool
+def save_long_document(doc_id: str, text: str) -> str:
+    """把长文本（文章、账单、报告等）分块保存到向量数据库。适合内容较长的文档。
+
+    Args:
+        doc_id: 文档唯一标识，例如 "账单-2026-05"、"报告-季度总结"
+        text: 完整的文档内容
+    """
+    try:
+        n = _vs_upsert_document(doc_id, text)
+        return f"已将文档「{doc_id}」分成 {n} 块保存。"
+    except Exception as e:
+        return f"保存失败：{e}"
+
+
+@tool
+def search_knowledge(query: str, top_k: int = 3) -> str:
+    """在向量数据库中语义检索相关知识。当需要回忆之前保存的内容时使用。
+
+    Args:
+        query: 检索关键词或问题
+        top_k: 返回最相关的条数，默认 3
+    """
+    try:
+        results = _vs_search(query, top_k=top_k)
+        if not results:
+            return "没有找到相关知识。"
+        return "\n---\n".join(
+            f"[{r['id']}] {r['text']}" for r in results
+        )
+    except Exception as e:
+        return f"检索失败：{e}"
 
 
 tavily_client = None
