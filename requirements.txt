@@ -1,3 +1,17 @@
 openai>=1.0.0
 python-dotenv>=1.0.0
 langchain
+langchain-community
+langchain-core
+langchain-postgres
+langgraph
+langgraph-checkpoint-postgres
+psycopg[binary,pool]
+psycopg2-binary
+pydantic
+requests
+tavily-python
+llama-cloud>=1.0
+fastapi
+uvicorn[standard]
+python-multipart

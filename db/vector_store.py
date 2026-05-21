@@ -24,14 +24,13 @@ class DashScopeEmbeddings(Embeddings):
     def embed_query(self, text: str) -> list[float]:
         return _emb.embed_text(text)
 
-
 def _embeddings():
     return DashScopeEmbeddings()
 
 
 _store_instance = None
 
-def _store():
+def _store(): 
     global _store_instance
     if _store_instance is None:
         _store_instance = PGVector(

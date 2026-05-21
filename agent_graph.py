@@ -33,6 +33,7 @@ from tools import (
     save_knowledge,
     save_long_document,
     search_knowledge,
+    parse_and_save_document,
 )
 # 持久存储（长期记忆）
 from langgraph.store.postgres import PostgresStore
@@ -91,6 +92,7 @@ def main():
                 save_knowledge,
                 save_long_document,
                 search_knowledge,
+                parse_and_save_document,
             ],
             system_prompt=(
                 f"你是一个有帮助的AI助手。当前日期和时间:{datetime.now().strftime('%Y年%m月%d日 %A %H:%M')}。"

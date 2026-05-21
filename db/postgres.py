@@ -14,7 +14,7 @@ def ensure_postgres(container: str = "agent-postgres") -> None:
         ["docker", "inspect", "--format", "{{.State.Running}}", container],
         capture_output=True, text=True,
     )
-
+ 
     if result.stdout.strip() == "true":
         return  # 已在运行
 

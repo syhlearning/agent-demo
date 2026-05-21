@@ -6,7 +6,8 @@ import os
 import json
 from tavily import TavilyClient
 from datetime import datetime
-from db.vector_store import upsert as _vs_upsert, search as _vs_search, upsert_document as _vs_upsert_document
+# from db.vector_store import upsert as _vs_upsert, search as _vs_search, upsert_document as _vs_upsert_document
+from db.llama_store import upsert as _vs_upsert, search as _vs_search, upsert_document as _vs_upsert_document
 
 
 def _get_user_id(runtime: ToolRuntime) -> str:
@@ -260,6 +261,91 @@ def get_weather(city: str) -> str:
         return "天气服务暂时不可用"
 
 
+# ── 旧版（LangChain PGVector，手动分块）已注释，保留备用 ──────────────────────
+# @tool
+# def save_knowledge(id: str, text: str) -> str:
+#     """把一段知识、笔记或文档永久保存到向量数据库，以便日后语义检索。
+#
+#     Args:
+#         id: 唯一标识符，例如 "note-1"、"doc-python-tips"
+#         text: 要保存的内容
+#     """
+#     try:
+#         _vs_upsert(id, text)
+#         return f"已保存知识：{id}"
+#     except Exception as e:
+#         return f"保存失败：{e}"
+#
+#
+# @tool
+# def save_long_document(doc_id: str, text: str) -> str:
+#     """把长文本（文章、账单、报告等）分块保存到向量数据库。适合内容较长的文档。
+#
+#     Args:
+#         doc_id: 文档唯一标识，例如 "账单-2026-05"、"报告-季度总结"
+#         text: 完整的文档内容
+#     """
+#     try:
+#         n = _vs_upsert_document(doc_id, text)
+#         return f"已将文档「{doc_id}」分成 {n} 块保存。"
+#     except Exception as e:
+#         return f"保存失败：{e}"
+#
+#
+# @tool
+# def search_knowledge(query: str, top_k: int = 3) -> str:
+#     """在向量数据库中语义检索相关知识。当需要回忆之前保存的内容时使用。
+#
+#     Args:
+#         query: 检索关键词或问题
+#         top_k: 返回最相关的条数，默认 3
+#     """
+#     try:
+#         results = _vs_search(query, top_k=top_k)
+#         if not results:
+#             return "没有找到相关知识。"
+#         return "\n---\n".join(
+#             f"[{r['id']}] {r['text']}" for r in results
+#         )
+#     except Exception as e:
+#         return f"检索失败：{e}"
+#
+#
+# @tool
+# def parse_and_save_document(file_path: str, doc_id: str) -> str:
+#     """用 LlamaParse 解析本地 PDF、Word 等文件，并保存到向量数据库。
+#
+#     Args:
+#         file_path: 本地文件的绝对路径或相对路径，例如 "/tmp/report.pdf"
+#         doc_id: 文档唯一标识，例如 "报告-2026-05"、"合同-A公司"
+#     """
+#     api_key = os.getenv("LLAMA_INDEX_API_KEY")
+#     if not api_key:
+#         return "解析失败：缺少 LLAMA_INDEX_API_KEY 环境变量。"
+#     if not os.path.exists(file_path):
+#         return f"解析失败：文件不存在：{file_path}"
+#     try:
+#         from llama_cloud import LlamaCloud
+#         client = LlamaCloud(token=api_key)
+#         with open(file_path, "rb") as f:
+#             file = client.files.create(file=(os.path.basename(file_path), f))
+#         result = client.parsing.parse(
+#             file_id=file.id, tier="agentic", version="latest", expand=["markdown"],
+#         )
+#         pages = result.markdown
+#         if not pages:
+#             return "解析失败：未提取到任何内容。"
+#         full_text = "\n\n".join(p.markdown for p in pages.pages)
+#         if not full_text.strip():
+#             return "解析失败：未提取到任何内容。"
+#         n = _vs_upsert_document(doc_id, full_text)
+#         return f"已解析并保存文档「{doc_id}」，共 {n} 块。"
+#     except Exception as e:
+#         return f"解析失败：{e}"
+# ── 旧版结束 ─────────────────────────────────────────────────────────────────
+
+
+# ── 新版（LlamaIndex + PGVector，自动切块） ───────────────────────────────────
 @tool
 def save_knowledge(id: str, text: str) -> str:
     """把一段知识、笔记或文档永久保存到向量数据库，以便日后语义检索。
@@ -277,7 +363,7 @@ def save_knowledge(id: str, text: str) -> str:
 
 @tool
 def save_long_document(doc_id: str, text: str) -> str:
-    """把长文本（文章、账单、报告等）分块保存到向量数据库。适合内容较长的文档。
+    """把长文本（文章、账单、报告等）自动分块保存到向量数据库。LlamaIndex 自动切块，无需手动指定块大小。
 
     Args:
         doc_id: 文档唯一标识，例如 "账单-2026-05"、"报告-季度总结"
@@ -285,7 +371,7 @@ def save_long_document(doc_id: str, text: str) -> str:
     """
     try:
         n = _vs_upsert_document(doc_id, text)
-        return f"已将文档「{doc_id}」分成 {n} 块保存。"
+        return f"已将文档「{doc_id}」自动分成 {n} 块保存。"
     except Exception as e:
         return f"保存失败：{e}"
 
@@ -303,10 +389,49 @@ def search_knowledge(query: str, top_k: int = 3) -> str:
         if not results:
             return "没有找到相关知识。"
         return "\n---\n".join(
-            f"[{r['id']}] {r['text']}" for r in results
+            f"[{r['id']}] (score: {r['score']:.3f})\n{r['text']}" for r in results
         )
     except Exception as e:
         return f"检索失败：{e}"
+
+
+@tool
+def parse_and_save_document(file_path: str, doc_id: str) -> str:
+    """用 LlamaCloud 解析本地 PDF、Word 等文件，并通过 LlamaIndex 自动分块保存到向量数据库。
+    当用户提供文件路径并要求保存文档时使用此工具。
+
+    Args:
+        file_path: 本地文件的绝对路径或相对路径，例如 "/tmp/report.pdf"
+        doc_id: 文档唯一标识，例如 "报告-2026-05"、"合同-A公司"
+    """
+    api_key = os.getenv("LLAMA_INDEX_API_KEY")
+    if not api_key:
+        return "解析失败：缺少 LLAMA_INDEX_API_KEY 环境变量。"
+    if not os.path.exists(file_path):
+        return f"解析失败：文件不存在：{file_path}"
+
+    try:
+        from llama_cloud import LlamaCloud
+        client = LlamaCloud(token=api_key)
+        with open(file_path, "rb") as f:
+            file = client.files.create(file=(os.path.basename(file_path), f))
+        result = client.parsing.parse(
+            file_id=file.id,
+            tier="agentic",
+            version="latest",
+            expand=["markdown"],
+        )
+        pages = result.markdown
+        if not pages:
+            return "解析失败：未提取到任何内容。"
+        full_text = "\n\n".join(p.markdown for p in pages.pages)
+        if not full_text.strip():
+            return "解析失败：未提取到任何内容。"
+        n = _vs_upsert_document(doc_id, full_text)
+        return f"已解析并保存文档「{doc_id}」，LlamaIndex 自动分成 {n} 块。"
+    except Exception as e:
+        return f"解析失败：{e}"
+# ── 新版结束 ─────────────────────────────────────────────────────────────────
 
 
 tavily_client = None

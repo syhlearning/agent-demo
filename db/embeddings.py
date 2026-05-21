@@ -45,10 +45,10 @@ def embed_text(text: str) -> list[float]:
     #  [ [0.1, 0.2, 0.3, ...] ]
     return embed_texts([text])[0]
 
-
+ 
 def embed_texts(texts: Sequence[str]) -> list[list[float]]:
     """批量把字符串转换成向量。
-
+ 
     DashScope text-embedding-v4 单次最多支持 10 条输入，所以这里会自动分批。
     """
     if isinstance(texts, str):
