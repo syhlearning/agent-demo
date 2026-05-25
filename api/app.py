@@ -11,8 +11,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from contextlib import asynccontextmanager
 from datetime import datetime
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request
-from fastapi.responses import StreamingResponse, HTMLResponse
+from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException
+from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -154,3 +154,34 @@ async def chat(req: ChatRequest, request: Request):
             yield item
 
     return StreamingResponse(generate(), media_type="text/plain; charset=utf-8")
+
+
+@app.post("/upload")
+async def upload(
+    file: UploadFile = File(...),   # 前端上传的文件（multipart）
+    doc_id: str = Form(...),        # 前端表单里的文档 ID
+):
+    import tempfile
+    from tools import parse_and_save_document
+
+    # 取文件扩展名（如 .pdf），让临时文件保持正确格式供 LlamaCloud 识别
+    suffix = os.path.splitext(file.filename or "")[1]
+
+    # 把上传的文件写入本地临时文件
+    # delete=False：关闭后不自动删，留给 parse_and_save_document 读取
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(await file.read())
+        tmp_path = tmp.name  # 记住路径，后面用完要手动删
+
+    try:
+        # 调用解析工具：LlamaCloud 解析文件 → LlamaIndex 分块存入向量数据库
+        result = parse_and_save_document.invoke({"file_path": tmp_path, "doc_id": doc_id})
+        if "失败" in result:
+            return JSONResponse({"ok": False, "message": result}, status_code=500)
+        return JSONResponse({"ok": True, "message": result})
+    except Exception as e:
+        # 捕获所有异常，统一返回 JSON，避免前端收到空响应报错
+        return JSONResponse({"ok": False, "message": str(e)}, status_code=500)
+    finally:
+        # 无论成功还是失败都删掉临时文件，防止磁盘堆积
+        os.unlink(tmp_path)

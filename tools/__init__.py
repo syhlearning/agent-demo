@@ -326,9 +326,9 @@ def get_weather(city: str) -> str:
 #         return f"解析失败：文件不存在：{file_path}"
 #     try:
 #         from llama_cloud import LlamaCloud
-#         client = LlamaCloud(token=api_key)
+#         client = LlamaCloud(api_key=api_key)
 #         with open(file_path, "rb") as f:
-#             file = client.files.create(file=(os.path.basename(file_path), f))
+#             file = client.files.create(file=(os.path.basename(file_path), f), purpose="parse")
 #         result = client.parsing.parse(
 #             file_id=file.id, tier="agentic", version="latest", expand=["markdown"],
 #         )
@@ -408,13 +408,13 @@ def parse_and_save_document(file_path: str, doc_id: str) -> str:
     if not api_key:
         return "解析失败：缺少 LLAMA_INDEX_API_KEY 环境变量。"
     if not os.path.exists(file_path):
-        return f"解析失败：文件不存在：{file_path}"
+        return f"解析失败：文件不存在：{file_path}" 
 
     try:
         from llama_cloud import LlamaCloud
-        client = LlamaCloud(token=api_key)
+        client = LlamaCloud(api_key=api_key)
         with open(file_path, "rb") as f:
-            file = client.files.create(file=(os.path.basename(file_path), f))
+            file = client.files.create(file=(os.path.basename(file_path), f), purpose="parse")
         result = client.parsing.parse(
             file_id=file.id,
             tier="agentic",
@@ -428,7 +428,7 @@ def parse_and_save_document(file_path: str, doc_id: str) -> str:
         if not full_text.strip():
             return "解析失败：未提取到任何内容。"
         n = _vs_upsert_document(doc_id, full_text)
-        return f"已解析并保存文档「{doc_id}」，LlamaIndex 自动分成 {n} 块。"
+        return f"已解析并保存文档「{doc_id}」，自动分成 {n} 块"
     except Exception as e:
         return f"解析失败：{e}"
 # ── 新版结束 ─────────────────────────────────────────────────────────────────
