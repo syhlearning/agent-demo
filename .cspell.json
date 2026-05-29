@@ -8,6 +8,8 @@
     "jsonplus",
     "langchain",
     "pgvector",
+    "qwen",
+    "rerank",
     "serde",
     "tavily"
   ]

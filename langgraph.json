@@ -1,0 +1,13 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "agent": "./agent_graph.py:graph"
+  },
+  "env": ".env",
+  "checkpointer": {
+    "provider": "postgres"
+  },
+  "store": {
+    "provider": "postgres"
+  }
+}

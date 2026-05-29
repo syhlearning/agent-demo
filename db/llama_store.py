@@ -107,17 +107,70 @@ def upsert_document(doc_id: str, text: str) -> int:
     return len(nodes)
 
 
+def _rerank(query: str, docs: list[dict], top_n: int) -> list[dict]:
+    """调用 DashScope qwen3-rerank 对检索结果重排序（精排）。
+    粗排（向量检索）靠 embedding 余弦相似度，速度快但精度一般；
+    精排（reranker）用 cross-encoder 把 query 和每条结果一起编码打分，精度更高但更慢。
+    两者组合：先粗排召回候选，再精排筛选最终结果。
+    """
+    import requests as _req
+
+    api_key = os.getenv("DASHSCOPE_API_KEY")
+    if not api_key:
+        # 没有 API key 就跳过 rerank，退化成普通向量检索
+        return docs[:top_n]
+
+    try:
+        resp = _req.post(
+            "https://dashscope.aliyuncs.com/compatible-api/v1/reranks",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "qwen3-rerank",
+                "query": query,
+                "documents": [d["text"] for d in docs],
+                "top_n": top_n,
+            },
+            timeout=15,
+        )
+        data = resp.json()
+        # 返回格式：{"results": [{"index": 2, "relevance_score": 0.95}, ...]}
+        ranked = []
+        for item in data.get("results", []):
+            idx = item["index"]
+            doc = docs[idx].copy()
+            doc["score"] = item["relevance_score"]  # 用 reranker 分数替换原始向量相似度分数
+            ranked.append(doc)
+        return ranked
+    except Exception:
+        # rerank 失败不影响主流程，退化成原始排序
+        return docs[:top_n]
+
+
 def search(query: str, top_k: int = 5) -> list[dict]:
-    """语义检索，返回最相似的 top_k 条。"""
+    """语义检索 + Reranking。
+    流程：向量粗排 top_k*4 → qwen3-rerank 精排 → 返回 top_k 条。
+    """
     _configure()
     index = _get_index()  # 挂载已有数据的索引
-    nodes = index.as_retriever(similarity_top_k=top_k).retrieve(query)  # 把 query 转向量后做相似度搜索
-    return [
+    # 粗排：多取一些候选（top_k 的 4 倍），给 reranker 更多选择空间
+    coarse_top = top_k * 4
+    nodes = index.as_retriever(similarity_top_k=coarse_top).retrieve(query)
+
+    coarse_results = [
         {
             "id": node.node_id,
             "text": node.text,
             "metadata": node.metadata,
-            "score": float(node.score) if node.score is not None else 0.0,  # 相似度分数，越高越相关
+            "score": float(node.score) if node.score is not None else 0.0,
         }
         for node in nodes
     ]
+
+    if not coarse_results:
+        return []
+
+    # 精排：用 reranker 重新打分，筛选出最相关的 top_k 条
+    return _rerank(query, coarse_results, top_n=top_k)

@@ -12,7 +12,9 @@ from db.llama_store import upsert as _vs_upsert, search as _vs_search, upsert_do
 
 def _get_user_id(runtime: ToolRuntime) -> str:
     configurable = (runtime.config or {}).get("configurable", {})
-    return str(configurable.get("user_id") or configurable.get("thread_id") or "default-user")
+    user_id = str(configurable.get("user_id") or configurable.get("thread_id") or "default-user")
+    print(f"[DEBUG _get_user_id] configurable={configurable}, resolved user_id={user_id}")
+    return user_id
 
 
 def _get_user_profile(runtime: ToolRuntime) -> dict:
@@ -36,7 +38,10 @@ def save_user_info(key: str, value: str, runtime: ToolRuntime) -> str:
         value: 要保存的字段值
     """
     if runtime.store is None:
+        print(f"[DEBUG save_user_info] store is None!")
         return "长期记忆数据库不可用，未保存用户信息。"
+
+    print(f"[DEBUG save_user_info] store OK, saving {key}={value} for user {_get_user_id(runtime)}")
 
     normalized_key = key.strip().lower().replace(" ", "_")
     normalized_value = value.strip()
