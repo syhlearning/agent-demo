@@ -151,7 +151,7 @@
             :src="previewUrl"
             :style="{ width: previewMode === 'mobile' ? '375px' : '100%' }"
             class="preview-iframe"
-            sandbox="allow-scripts"
+            sandbox="allow-scripts allow-same-origin"
           />
         </div>
       </div>
@@ -307,7 +307,7 @@ onMounted(() => {
 // 解析 AI 消息中的 [PREVIEW:...] 标记
 function extractPreviewUrl(text: string): string | null {
   const match = text.match(/\[PREVIEW:(\/projects\/[^\]]+)\]/);
-  return match ? match[1] : null;
+  return match ? match[1] + "?t=" + Date.now() : null;
 }
 
 function showToast(msg: string, type: "success" | "error" = "success") {
@@ -420,13 +420,13 @@ async function send() {
     const reader = res.body!.getReader();
     const decoder = new TextDecoder();
     let buf = "";
+    let currentEvent = "";
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       buf += decoder.decode(value, { stream: true });
       const lines = buf.split("\n");
       buf = lines.pop() ?? "";
-      let currentEvent = "";
       // ── 逐行解析 SSE 事件流 ──────────────────────────────────────────────
       // SSE 原始格式示例（每个事件由 event 行 + data 行 + 空行组成）：
       //
@@ -604,13 +604,13 @@ async function handleReview(
     const reader = res.body!.getReader();
     const decoder = new TextDecoder();
     let buf = "";
+    let currentEvent = "";
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       buf += decoder.decode(value, { stream: true });
       const lines = buf.split("\n");
       buf = lines.pop() ?? "";
-      let currentEvent = "";
       for (const line of lines) {
         if (line.startsWith("event: ")) {
           currentEvent = line.slice(7).trim();

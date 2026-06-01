@@ -1,0 +1,1032 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+    <title>三界 · 深度交互实验室</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          sans-serif;
+        background: #0a0a14;
+        color: #eee;
+        min-height: 100vh;
+        padding: 30px 16px 80px;
+      }
+      .root {
+        max-width: 1100px;
+        margin: 0 auto;
+      }
+      .header {
+        text-align: center;
+        margin-bottom: 40px;
+      }
+      .header h1 {
+        font-size: clamp(24px, 4vw, 40px);
+        background: linear-gradient(135deg, #6c5ce7, #00cec9, #fd79a8, #fdcb6e);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+      .header p {
+        color: #8888a0;
+        font-size: 15px;
+        margin-top: 8px;
+      }
+      .wrap {
+        display: flex;
+        flex-direction: column;
+        gap: 40px;
+      }
+      .card {
+        background: rgba(255, 255, 255, 0.03);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 20px;
+        padding: 28px 24px 24px;
+      }
+      .card hd {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 20px;
+        font-size: 18px;
+        font-weight: 600;
+      }
+      .card hd span {
+        font-size: 22px;
+      }
+      .card hd .tag {
+        font-size: 11px;
+        padding: 3px 10px;
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.05);
+        color: #8888a0;
+        margin-left: auto;
+      }
+      .card .bd {
+        min-height: 200px;
+      }
+      .board {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+        margin-bottom: 14px;
+      }
+      .board .tile {
+        aspect-ratio: 1;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        background: linear-gradient(
+          145deg,
+          rgba(108, 92, 231, 0.1),
+          rgba(108, 92, 231, 0.02)
+        );
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 30px;
+        cursor: pointer;
+        transition: all 0.2s;
+        position: relative;
+        transform-style: preserve-3d;
+        perspective: 400px;
+      }
+      .board .tile .back {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 12px;
+        background: rgba(0, 0, 0, 0.3);
+        transform: rotateY(180deg);
+        backface-visibility: hidden;
+        font-size: 30px;
+      }
+      .board .tile .front {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 12px;
+        backface-visibility: hidden;
+        z-index: 2;
+      }
+      .board .tile .front::after {
+        content: "?";
+        font-size: 20px;
+        color: rgba(255, 255, 255, 0.2);
+        font-weight: 600;
+      }
+      .board .tile.flipped {
+        transform: rotateY(180deg);
+      }
+      .board .tile.matched {
+        transform: rotateY(180deg);
+        border-color: rgba(85, 239, 196, 0.3);
+      }
+      .stats {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+      }
+      .stats .s {
+        flex: 1;
+        min-width: 60px;
+        background: rgba(255, 255, 255, 0.02);
+        border-radius: 10px;
+        padding: 10px;
+        text-align: center;
+        border: 1px solid rgba(255, 255, 255, 0.03);
+      }
+      .stats .s .n {
+        font-size: 20px;
+        font-weight: 700;
+        color: #a29bfe;
+        font-variant-numeric: tabular-nums;
+      }
+      .stats .s .l {
+        font-size: 10px;
+        color: #8888a0;
+        margin-top: 2px;
+      }
+      .actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 10px;
+      }
+      .actions button {
+        padding: 8px 18px;
+        border: none;
+        border-radius: 10px;
+        font-size: 13px;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-family: inherit;
+      }
+      .actions button:active {
+        transform: scale(0.95);
+      }
+      .actions .p {
+        background: linear-gradient(135deg, #6c5ce7, #8b7cf7);
+        color: #fff;
+      }
+      .actions .s {
+        background: rgba(255, 255, 255, 0.06);
+        color: #aaa;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+      }
+      .actions .s:hover {
+        background: rgba(255, 255, 255, 0.1);
+        color: #fff;
+      }
+      .status {
+        font-size: 13px;
+        color: #8888a0;
+        text-align: center;
+      }
+      .toolbar {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+      }
+      .toolbar .colors {
+        display: flex;
+        gap: 5px;
+      }
+      .toolbar .colors .c {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        border: 2px solid transparent;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .toolbar .colors .c:hover {
+        transform: scale(1.15);
+      }
+      .toolbar .colors .c.act {
+        border-color: #fff;
+        box-shadow: 0 0 10px rgba(255, 255, 255, 0.15);
+        transform: scale(1.1);
+      }
+      .toolbar .sz {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: #888;
+      }
+      .pxgrid {
+        display: grid;
+        gap: 1px;
+        background: rgba(255, 255, 255, 0.03);
+        user-select: none;
+        border-radius: 10px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.04);
+      }
+      .pxgrid .px {
+        aspect-ratio: 1;
+        background: rgba(255, 255, 255, 0.02);
+        cursor: pointer;
+        transition: background 0.08s;
+      }
+      .pxgrid .px:hover {
+        filter: brightness(1.3);
+      }
+      .infor {
+        display: flex;
+        gap: 14px;
+        margin-top: 10px;
+        font-size: 12px;
+        color: #888;
+        flex-wrap: wrap;
+      }
+      .infor span strong {
+        color: #eee;
+      }
+      .sb-wrap {
+        position: relative;
+        background: rgba(0, 0, 0, 0.25);
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.04);
+        overflow: hidden;
+        height: 280px;
+        cursor: pointer;
+      }
+      .sb-wrap canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      .sb-wrap .hint {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        color: #555;
+        pointer-events: none;
+        transition: opacity 0.3s;
+      }
+      .sb-wrap .hint.hid {
+        opacity: 0;
+      }
+      .sb-ctrl {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .sb-ctrl button {
+        padding: 7px 16px;
+        border: none;
+        border-radius: 9px;
+        font-size: 12px;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-family: inherit;
+      }
+      .sb-ctrl button:active {
+        transform: scale(0.94);
+      }
+      .sb-ctrl .p {
+        background: linear-gradient(135deg, #fd79a8, #e17055);
+        color: #fff;
+      }
+      .sb-ctrl .s {
+        background: rgba(255, 255, 255, 0.06);
+        color: #aaa;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+      }
+      .sb-ctrl .s:hover {
+        background: rgba(255, 255, 255, 0.1);
+        color: #fff;
+      }
+      .sb-ctrl .mg {
+        display: flex;
+        gap: 3px;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 9px;
+        padding: 3px;
+      }
+      .sb-ctrl .mg .m {
+        width: 30px;
+        height: 30px;
+        border-radius: 7px;
+        border: none;
+        background: transparent;
+        color: #888;
+        font-size: 15px;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .sb-ctrl .mg .m:hover {
+        color: #eee;
+      }
+      .sb-ctrl .mg .m.act {
+        background: rgba(255, 255, 255, 0.08);
+        color: #eee;
+      }
+      .sb-ctrl .sl {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 11px;
+        color: #888;
+      }
+      .sb-info {
+        display: flex;
+        gap: 14px;
+        margin-top: 10px;
+        font-size: 12px;
+        color: #888;
+      }
+      .sb-info span strong {
+        color: #eee;
+      }
+      @media (max-width: 640px) {
+        .root {
+          padding: 0;
+        }
+        .card {
+          padding: 18px 14px 16px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="root">
+      <div class="header">
+        <h1>✦ 三界 · 深度交互实验室</h1>
+        <p>记忆翻牌 · 像素画板 · 重力沙盘 — 三种完全不同的沉浸式交互体验</p>
+      </div>
+      <div class="wrap">
+        <!-- 模块1: 记忆翻牌 -->
+        <div class="card">
+          <hd><span>🧠</span> 记忆翻牌 <span class="tag">点击翻转</span></hd>
+          <div class="bd">
+            <div class="board" id="board"></div>
+            <div class="stats">
+              <div class="s">
+                <div class="n" id="moves">0</div>
+                <div class="l">步数</div>
+              </div>
+              <div class="s">
+                <div class="n" id="pairs">0</div>
+                <div class="l">配对</div>
+              </div>
+              <div class="s">
+                <div class="n" id="timer">0s</div>
+                <div class="l">用时</div>
+              </div>
+            </div>
+            <div class="actions">
+              <button class="p" id="newGameBtn">🔄 新一局</button>
+              <button class="s" id="easyBtn">😊 简单 4×3</button>
+              <button class="s" id="hardBtn">😈 困难 4×5</button>
+            </div>
+            <div class="status" id="gameStatus">✦ 点击卡片开始游戏</div>
+          </div>
+        </div>
+
+        <!-- 模块2: 像素画板 -->
+        <div class="card">
+          <hd><span>🎨</span> 像素画板 <span class="tag">点击/拖拽</span></hd>
+          <div class="bd">
+            <div class="toolbar">
+              <div class="colors" id="colorPicker"></div>
+              <div class="sz">
+                <label>🖌</label
+                ><input
+                  type="range"
+                  id="brushSize"
+                  min="1"
+                  max="5"
+                  value="2"
+                /><span id="brushSizeVal">2</span>
+              </div>
+              <button
+                class="s"
+                id="clearCanvasBtn"
+                style="
+                  margin-left: auto;
+                  padding: 5px 12px;
+                  border: none;
+                  border-radius: 8px;
+                  background: rgba(255, 255, 255, 0.06);
+                  color: #aaa;
+                  cursor: pointer;
+                  font-size: 12px;
+                  font-family: inherit;
+                "
+              >
+                ✕ 清空
+              </button>
+              <button
+                class="s"
+                id="fillCanvasBtn"
+                style="
+                  padding: 5px 12px;
+                  border: none;
+                  border-radius: 8px;
+                  background: rgba(255, 255, 255, 0.06);
+                  color: #aaa;
+                  cursor: pointer;
+                  font-size: 12px;
+                  font-family: inherit;
+                "
+              >
+                ◼ 填充
+              </button>
+            </div>
+            <div class="pxgrid" id="pixelGrid"></div>
+            <div class="infor">
+              <span>🎯 像素 <strong id="pxCount">0</strong></span>
+              <span>🖌 笔刷 <strong id="brushSizeLabel">2×2</strong></span>
+              <span>💡 鼠标拖拽连续绘制</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 模块3: 重力沙盘 -->
+        <div class="card">
+          <hd><span>🌊</span> 重力沙盘 <span class="tag">物理模拟</span></hd>
+          <div class="bd">
+            <div class="sb-wrap" id="sandboxWrap">
+              <canvas id="sandboxCanvas"></canvas>
+              <div class="hint" id="sandboxHint">
+                ✦ 点击生成沙粒 · 观察物理堆积 ✦
+              </div>
+            </div>
+            <div class="sb-ctrl">
+              <button class="p" id="clearSandBtn">✕ 清空</button>
+              <button class="s" id="explodeSandBtn">💥 爆炸</button>
+              <button class="s" id="wallSandBtn">🧱 建墙</button>
+              <div class="mg" id="modeGroup">
+                <button class="m act" data-mode="sand" title="沙子">🟡</button>
+                <button class="m" data-mode="water" title="水">🔵</button>
+                <button class="m" data-mode="eraser" title="橡皮">🧹</button>
+              </div>
+              <div class="sl">
+                <label>⚙</label
+                ><input type="range" id="sandSize" min="1" max="5" value="2" />
+              </div>
+            </div>
+            <div class="sb-info">
+              <span>⏳ 沙粒 <strong id="sandCount">0</strong></span>
+              <span>💧 水滴 <strong id="waterCount">0</strong></span>
+              <span>🔄 每帧自动物理模拟</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        "use strict";
+
+        /* 模块1: 记忆翻牌 */
+        (function () {
+          var e =
+            "🐶🐱🐭🐹🐰🦊🐻🐼🐨🐯🦁🐮🐸🐵🐧🐦🐤🐣🐺🦄🐴🦋🐛🐝🐞🦀🐳🐬🐟🐠🐡🦈🐊🐅🦍🦧🐘🦏🐪🐫🦒🦘🦡🦨🦦🦥🐁🐀🐿️🦔🐇🐈🦮🐕‍🦺🐕🐩".split(
+              ""
+            );
+          var b = document.getElementById("board"),
+            me = document.getElementById("moves"),
+            pe = document.getElementById("pairs"),
+            te = document.getElementById("timer"),
+            se = document.getElementById("gameStatus"),
+            nb = document.getElementById("newGameBtn"),
+            eb = document.getElementById("easyBtn"),
+            hb = document.getElementById("hardBtn");
+          var co = 4,
+            ro = 3,
+            ca = [],
+            fl = [],
+            ma = 0,
+            mo = 0,
+            lo = 0,
+            ti = null,
+            sec = 0,
+            st = 0;
+          function sh(a) {
+            for (var i = a.length - 1; i > 0; i--) {
+              var j = Math.floor(Math.random() * (i + 1)),
+                t = a[i];
+              a[i] = a[j];
+              a[j] = t;
+            }
+            return a;
+          }
+          function init(c, r) {
+            co = c;
+            ro = r;
+            var t = co * ro;
+            if (t % 2 !== 0) {
+              ro++;
+              t = co * ro;
+            }
+            var pn = t / 2,
+              ch = [],
+              po = e.slice();
+            sh(po);
+            for (var i = 0; i < pn; i++) {
+              ch.push(po[i % po.length]);
+              ch.push(po[i % po.length]);
+            }
+            sh(ch);
+            ca = ch.map(function (em, i) {
+              return { id: i, emoji: em, flipped: 0, matched: 0 };
+            });
+            fl = [];
+            ma = 0;
+            mo = 0;
+            sec = 0;
+            st = 0;
+            lo = 0;
+            if (ti) {
+              clearInterval(ti);
+              ti = null;
+            }
+            me.textContent = "0";
+            pe.textContent = "0";
+            te.textContent = "0s";
+            se.textContent = "✦ 点击卡片开始游戏";
+            render();
+          }
+          function render() {
+            b.style.gridTemplateColumns = "repeat(" + co + ",1fr)";
+            b.innerHTML = "";
+            ca.forEach(function (c, i) {
+              var t = document.createElement("div");
+              t.className = "tile";
+              if (c.flipped || c.matched) t.classList.add("flipped");
+              if (c.matched) t.classList.add("matched");
+              t.dataset.index = i;
+              t.innerHTML =
+                '<div class="front"></div><div class="back">' +
+                c.emoji +
+                "</div>";
+              t.addEventListener("click", function () {
+                flip(i);
+              });
+              b.appendChild(t);
+            });
+          }
+          function flip(i) {
+            if (lo) return;
+            var c = ca[i];
+            if (c.matched || c.flipped) return;
+            if (fl.length >= 2) return;
+            if (!st) {
+              st = 1;
+              ti = setInterval(function () {
+                sec++;
+                te.textContent = sec + "s";
+              }, 1000);
+            }
+            c.flipped = 1;
+            fl.push(i);
+            render();
+            if (fl.length === 2) {
+              mo++;
+              me.textContent = mo;
+              lo = 1;
+              var a = ca[fl[0]],
+                b2 = ca[fl[1]];
+              if (a.emoji === b2.emoji) {
+                a.matched = 1;
+                b2.matched = 1;
+                ma++;
+                pe.textContent = ma;
+                fl = [];
+                lo = 0;
+                if (ma === ca.length / 2) {
+                  if (ti) {
+                    clearInterval(ti);
+                    ti = null;
+                  }
+                  se.innerHTML =
+                    "🎉 通关！用时 <strong>" +
+                    sec +
+                    "s</strong>，步数 <strong>" +
+                    mo +
+                    "</strong>";
+                }
+                render();
+              } else {
+                se.textContent = "❌ 不匹配";
+                setTimeout(function () {
+                  ca[fl[0]].flipped = 0;
+                  ca[fl[1]].flipped = 0;
+                  fl = [];
+                  lo = 0;
+                  se.textContent = "💡 继续配对";
+                  render();
+                }, 700);
+              }
+            }
+          }
+          nb.addEventListener("click", function () {
+            init(4, 3);
+          });
+          eb.addEventListener("click", function () {
+            init(4, 3);
+          });
+          hb.addEventListener("click", function () {
+            init(4, 5);
+          });
+          init(4, 3);
+        })();
+
+        /* 模块2: 像素画板 */
+        (function () {
+          var cs = [
+            "#6c5ce7",
+            "#00cec9",
+            "#55efc4",
+            "#fd79a8",
+            "#fdcb6e",
+            "#e17055",
+            "#0984e3",
+            "#d63031",
+            "#ffffff",
+            "#2d3436",
+          ];
+          var gs = 20,
+            cc = "#6c5ce7",
+            bs = 2,
+            down = 0;
+          var g = document.getElementById("pixelGrid"),
+            cp = document.getElementById("colorPicker"),
+            br = document.getElementById("brushSize"),
+            bv = document.getElementById("brushSizeVal"),
+            bl = document.getElementById("brushSizeLabel"),
+            cb = document.getElementById("clearCanvasBtn"),
+            fb = document.getElementById("fillCanvasBtn"),
+            pc = document.getElementById("pxCount");
+          var px = [];
+          function bp() {
+            cp.innerHTML = "";
+            cs.forEach(function (c) {
+              var d = document.createElement("div");
+              d.className = "c" + (c === cc ? " act" : "");
+              d.style.background = c;
+              d.addEventListener("click", function () {
+                cp.querySelectorAll(".c").forEach(function (e) {
+                  e.classList.remove("act");
+                });
+                d.classList.add("act");
+                cc = c;
+              });
+              cp.appendChild(d);
+            });
+          }
+          function i2() {
+            px = [];
+            for (var y = 0; y < gs; y++) {
+              px[y] = [];
+              for (var x = 0; x < gs; x++) {
+                px[y][x] = null;
+              }
+            }
+            rg();
+            uc();
+          }
+          function rg() {
+            g.style.gridTemplateColumns = "repeat(" + gs + ",1fr)";
+            g.innerHTML = "";
+            for (var y = 0; y < gs; y++) {
+              for (var x = 0; x < gs; x++) {
+                var p = document.createElement("div");
+                p.className = "px";
+                p.dataset.x = x;
+                p.dataset.y = y;
+                p.style.background = px[y][x] || "rgba(255,255,255,0.02)";
+                p.addEventListener("mousedown", function (e) {
+                  e.preventDefault();
+                  pt(+this.dataset.x, +this.dataset.y);
+                });
+                p.addEventListener("mouseenter", function () {
+                  if (down) pt(+this.dataset.x, +this.dataset.y);
+                });
+                g.appendChild(p);
+              }
+            }
+          }
+          function pt(x, y) {
+            var sz = parseInt(bs),
+              hf = Math.floor(sz / 2);
+            for (var dy = -hf; dy <= hf; dy++) {
+              for (var dx = -hf; dx <= hf; dx++) {
+                var nx = x + dx,
+                  ny = y + dy;
+                if (nx >= 0 && nx < gs && ny >= 0 && ny < gs) px[ny][nx] = cc;
+              }
+            }
+            rg();
+            uc();
+          }
+          function uc() {
+            var c = 0;
+            for (var y = 0; y < gs; y++)
+              for (var x = 0; x < gs; x++) if (px[y][x]) c++;
+            pc.textContent = c;
+          }
+          document.addEventListener("mousedown", function () {
+            down = 1;
+          });
+          document.addEventListener("mouseup", function () {
+            down = 0;
+          });
+          g.addEventListener("mouseleave", function () {
+            down = 0;
+          });
+          br.addEventListener("input", function () {
+            bs = +this.value;
+            bv.textContent = bs;
+            bl.textContent = bs + "×" + bs;
+          });
+          cb.addEventListener("click", function () {
+            for (var y = 0; y < gs; y++)
+              for (var x = 0; x < gs; x++) px[y][x] = null;
+            rg();
+            uc();
+          });
+          fb.addEventListener("click", function () {
+            for (var y = 0; y < gs; y++)
+              for (var x = 0; x < gs; x++) px[y][x] = cc;
+            rg();
+            uc();
+          });
+          bp();
+          i2();
+        })();
+
+        /* 模块3: 重力沙盘 */
+        (function () {
+          var c = document.getElementById("sandboxCanvas"),
+            w = document.getElementById("sandboxWrap"),
+            h = document.getElementById("sandboxHint"),
+            ce = document.getElementById("sandCount"),
+            we = document.getElementById("waterCount"),
+            cb = document.getElementById("clearSandBtn"),
+            eb = document.getElementById("explodeSandBtn"),
+            wb = document.getElementById("wallSandBtn"),
+            sr = document.getElementById("sandSize"),
+            mg = document.getElementById("modeGroup");
+          var ctx = c.getContext("2d"),
+            W = 0,
+            H = 0,
+            cols = 0,
+            rows = 0,
+            cs = 4,
+            gr = [],
+            mode = "sand",
+            bs2 = 2,
+            down = 0,
+            aid = 0;
+          function rs() {
+            var r = w.getBoundingClientRect();
+            W = r.width;
+            H = r.height;
+            var dpr = window.devicePixelRatio || 1;
+            c.width = W * dpr;
+            c.height = H * dpr;
+            c.style.width = W + "px";
+            c.style.height = H + "px";
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.scale(dpr, dpr);
+            cols = Math.floor(W / cs);
+            rows = Math.floor(H / cs);
+            i3();
+          }
+          function i3() {
+            gr = [];
+            for (var y = 0; y < rows; y++) {
+              gr[y] = [];
+              for (var x = 0; x < cols; x++) {
+                gr[y][x] = 0;
+              }
+            }
+            draw();
+          }
+          function gcr(e) {
+            var r = c.getBoundingClientRect();
+            return {
+              col: Math.floor((e.clientX - r.left) / cs),
+              row: Math.floor((e.clientY - r.top) / cs),
+            };
+          }
+          function pt2(col, row) {
+            if (col < 0 || col >= cols || row < 0 || row >= rows) return;
+            var sz = parseInt(bs2),
+              hf = Math.floor(sz / 2);
+            for (var dy = -hf; dy <= hf; dy++) {
+              for (var dx = -hf; dx <= hf; dx++) {
+                var nx = col + dx,
+                  ny = row + dy;
+                if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
+                  if (mode === "eraser") gr[ny][nx] = 0;
+                  else if (mode === "wall") gr[ny][nx] = 3;
+                  else if (mode === "sand" && gr[ny][nx] === 0) gr[ny][nx] = 1;
+                  else if (mode === "water" && gr[ny][nx] === 0) gr[ny][nx] = 2;
+                }
+              }
+            }
+          }
+          var mc = -1,
+            mr = -1;
+          c.addEventListener("mousedown", function (e) {
+            down = 1;
+            var p = gcr(e);
+            mc = p.col;
+            mr = p.row;
+            pt2(p.col, p.row);
+            if (h) h.classList.add("hid");
+          });
+          c.addEventListener("mousemove", function (e) {
+            var p = gcr(e);
+            if (p.col !== mc || p.row !== mr) {
+              mc = p.col;
+              mr = p.row;
+              if (down) pt2(p.col, p.row);
+            }
+          });
+          document.addEventListener("mouseup", function () {
+            down = 0;
+          });
+          c.addEventListener("mouseleave", function () {
+            down = 0;
+          });
+          c.addEventListener("touchstart", function (e) {
+            e.preventDefault();
+            var t = e.touches[0];
+            c.dispatchEvent(
+              new MouseEvent("mousedown", {
+                clientX: t.clientX,
+                clientY: t.clientY,
+              })
+            );
+          });
+          c.addEventListener("touchmove", function (e) {
+            e.preventDefault();
+            var t = e.touches[0];
+            c.dispatchEvent(
+              new MouseEvent("mousemove", {
+                clientX: t.clientX,
+                clientY: t.clientY,
+              })
+            );
+          });
+          c.addEventListener("touchend", function (e) {
+            e.preventDefault();
+            document.dispatchEvent(new MouseEvent("mouseup", {}));
+          });
+          function sim() {
+            for (var y = rows - 2; y >= 0; y--) {
+              for (var x = 0; x < cols; x++) {
+                if (gr[y][x] === 1) {
+                  if (gr[y + 1][x] === 0) {
+                    gr[y][x] = 0;
+                    gr[y + 1][x] = 1;
+                  } else if (gr[y + 1][x] === 2) {
+                    gr[y][x] = 2;
+                    gr[y + 1][x] = 1;
+                  } else if (x > 0 && gr[y + 1][x - 1] === 0) {
+                    gr[y][x] = 0;
+                    gr[y + 1][x - 1] = 1;
+                  } else if (x < cols - 1 && gr[y + 1][x + 1] === 0) {
+                    gr[y][x] = 0;
+                    gr[y + 1][x + 1] = 1;
+                  }
+                }
+              }
+            }
+            for (var y = rows - 2; y >= 0; y--) {
+              for (var x = 0; x < cols; x++) {
+                if (gr[y][x] === 2) {
+                  if (gr[y + 1][x] === 0) {
+                    gr[y][x] = 0;
+                    gr[y + 1][x] = 2;
+                  } else if (
+                    x > 0 &&
+                    gr[y][x - 1] === 0 &&
+                    gr[y + 1][x - 1] === 0
+                  ) {
+                    gr[y][x] = 0;
+                    gr[y][x - 1] = 2;
+                  } else if (
+                    x < cols - 1 &&
+                    gr[y][x + 1] === 0 &&
+                    gr[y + 1][x + 1] === 0
+                  ) {
+                    gr[y][x] = 0;
+                    gr[y][x + 1] = 2;
+                  } else if (x > 0 && gr[y][x - 1] === 0) {
+                    gr[y][x] = 0;
+                    gr[y][x - 1] = 2;
+                  } else if (x < cols - 1 && gr[y][x + 1] === 0) {
+                    gr[y][x] = 0;
+                    gr[y][x + 1] = 2;
+                  }
+                }
+              }
+            }
+            draw();
+            up3();
+            aid = requestAnimationFrame(sim);
+          }
+          function draw() {
+            ctx.clearRect(0, 0, W, H);
+            var sc = 0,
+              wc = 0;
+            for (var y = 0; y < rows; y++) {
+              for (var x = 0; x < cols; x++) {
+                var v = gr[y][x];
+                if (v !== 0) {
+                  if (v === 1) {
+                    ctx.fillStyle = "rgba(253,121,168,0.8)";
+                    sc++;
+                  } else if (v === 2) {
+                    ctx.fillStyle = "rgba(0,206,201,0.6)";
+                    wc++;
+                  } else {
+                    ctx.fillStyle = "rgba(255,255,255,0.15)";
+                  }
+                  ctx.fillRect(x * cs, y * cs, cs - 1, cs - 1);
+                }
+              }
+            }
+            ce.textContent = sc;
+            we.textContent = wc;
+          }
+          function up3() {
+            var sc = 0,
+              wc = 0;
+            for (var y = 0; y < rows; y++) {
+              for (var x = 0; x < cols; x++) {
+                if (gr[y][x] === 1) sc++;
+                else if (gr[y][x] === 2) wc++;
+              }
+            }
+            ce.textContent = sc;
+            we.textContent = wc;
+          }
+          cb.addEventListener("click", function () {
+            i3();
+          });
+          eb.addEventListener("click", function () {
+            for (var y = 0; y < rows; y++) {
+              for (var x = 0; x < cols; x++) {
+                if (gr[y][x] !== 0) gr[y][x] = 0;
+              }
+            }
+          });
+          wb.addEventListener("click", function () {
+            for (var x = 0; x < cols; x++) {
+              gr[rows - 1][x] = 3;
+            }
+            for (var y = 0; y < rows; y++) {
+              gr[y][0] = 3;
+              gr[y][cols - 1] = 3;
+            }
+          });
+          mg.querySelectorAll(".m").forEach(function (b) {
+            b.addEventListener("click", function () {
+              mg.querySelectorAll(".m").forEach(function (b2) {
+                b2.classList.remove("act");
+              });
+              b.classList.add("act");
+              mode = b.dataset.mode;
+            });
+          });
+          sr.addEventListener("input", function () {
+            bs2 = parseInt(this.value);
+          });
+          window.addEventListener("resize", rs);
+          setTimeout(rs, 100);
+        })();
+      })();
+    </script>
+  </body>
+</html>
