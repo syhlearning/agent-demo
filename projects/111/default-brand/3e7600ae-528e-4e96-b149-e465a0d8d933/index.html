@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高端鞋履展示 | 品牌专卖</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&display=swap');
+        
+        .root-container {
+            font-family: 'Noto Sans SC', sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        /* 品牌主色调 */
+        :root {
+            --primary-color: #E74C3C;
+            --secondary-color: #2C3E50;
+            --light-bg: #F9F9F9;
+        }
+        
+        /* 头部区域 */
+        .hero-section {
+            background: linear-gradient(135deg, var(--secondary-color) 0%, var(--primary-color) 100%);
+            color: white;
+            padding: 60px 20px;
+            text-align: center;
+            border-radius: 0 0 8px 8px;
+            margin-bottom: 40px;
+        }
+        
+        .hero-title {
+            font-size: 2.8rem;
+            margin-bottom: 15px;
+            font-weight: 700;
+        }
+        
+        .hero-subtitle {
+            font-size: 1.2rem;
+            opacity: 0.9;
+            max-width: 800px;
+            margin: 0 auto 30px;
+        }
+        
+        /* 产品展示区 */
+        .product-showcase {
+            margin: 60px 0;
+        }
+        
+        .section-title {
+            font-size: 2rem;
+            color: var(--secondary-color);
+            margin-bottom: 30px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--primary-color);
+            display: inline-block;
+        }
+        
+        .shoe-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 30px;
+            margin-bottom: 60px;
+        }
+        
+        .shoe-card {
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .shoe-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 15px 30px rgba(0,0,0,0.15);
+        }
+        
+        .shoe-image-container {
+            height: 250px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .shoe-image {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.5s ease;
+        }
+        
+        .shoe-card:hover .shoe-image {
+            transform: scale(1.05);
+        }
+        
+        .shoe-badge {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: var(--primary-color);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+        
+        .shoe-info {
+            padding: 20px;
+        }
+        
+        .shoe-name {
+            font-size: 1.3rem;
+            margin: 0 0 10px;
+            color: var(--secondary-color);
+        }
+        
+        .shoe-description {
+            color: #666;
+            margin-bottom: 15px;
+            font-size: 0.95rem;
+        }
+        
+        .shoe-price {
+            font-size: 1.4rem;
+            color: var(--primary-color);
+            font-weight: bold;
+            margin: 15px 0;
+        }
+        
+        .cta-button {
+            display: inline-block;
+            padding: 12px 25px;
+            background: var(--primary-color);
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: 500;
+            transition: background 0.3s ease;
+            border: none;
+            cursor: pointer;
+            width: 100%;
+            text-align: center;
+        }
+        
+        .cta-button:hover {
+            background: #c0392b;
+        }
+        
+        /* 新增的特色区域 */
+        .feature-section {
+            background: var(--light-bg);
+            padding: 60px 20px;
+            margin: 60px 0;
+            border-radius: 8px;
+        }
+        
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin-top: 40px;
+        }
+        
+        .feature-card {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+        }
+        
+        .feature-icon {
+            font-size: 2.5rem;
+            color: var(--primary-color);
+            margin-bottom: 20px;
+        }
+        
+        .feature-title {
+            font-size: 1.3rem;
+            color: var(--secondary-color);
+            margin-bottom: 15px;
+        }
+        
+        /* 客户评价区 */
+        .testimonial-section {
+            margin: 80px 0;
+        }
+        
+        .testimonial-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+        }
+        
+        .testimonial-card {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+            position: relative;
+        }
+        
+        .testimonial-text {
+            font-style: italic;
+            margin-bottom: 20px;
+            position: relative;
+            padding-left: 20px;
+        }
+        
+        .testimonial-text::before {
+            content: '"';
+            font-size: 3rem;
+            color: var(--primary-color);
+            opacity: 0.2;
+            position: absolute;
+            left: -15px;
+            top: -15px;
+        }
+        
+        .testimonial-author {
+            display: flex;
+            align-items: center;
+        }
+        
+        .author-avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            object-fit: cover;
+            margin-right: 15px;
+        }
+        
+        .author-info h4 {
+            margin: 0 0 5px;
+            color: var(--secondary-color);
+        }
+        
+        .author-info p {
+            margin: 0;
+            color: #666;
+            font-size: 0.9rem;
+        }
+        
+        /* 常见问题区 */
+        .faq-section {
+            margin: 80px 0;
+        }
+        
+        .faq-item {
+            margin-bottom: 20px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 20px;
+        }
+        
+        .faq-question {
+            font-size: 1.2rem;
+            color: var(--secondary-color);
+            margin-bottom: 10px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .faq-answer {
+            color: #666;
+            padding-right: 20px;
+        }
+        
+        /* 页脚 */
+        footer {
+            background: var(--secondary-color);
+            color: white;
+            padding: 60px 20px;
+            text-align: center;
+            border-radius: 8px 8px 0 0;
+            margin-top: 80px;
+        }
+        
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        
+        .footer-links a {
+            color: white;
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+        
+        .footer-links a:hover {
+            color: var(--primary-color);
+        }
+        
+        .copyright {
+            opacity: 0.8;
+            font-size: 0.9rem;
+        }
+        
+        @media (max-width: 768px) {
+            .hero-title {
+                font-size: 2rem;
+            }
+            
+            .shoe-grid, .feature-grid, .testimonial-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .footer-links {
+                flex-direction: column;
+                gap: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="root-container">
+        <!-- 头部区域 -->
+        <section class="hero-section">
+            <h1 class="hero-title">匠心工艺 舒适每一步</h1>
+            <p class="hero-subtitle">精选全球优质材料，结合人体工学设计，为您带来非凡的穿着体验</p>
+        </section>
+        
+        <!-- 新品推荐区 -->
+        <section class="product-showcase">
+            <h2 class="section-title">新品上市</h2>
+            <div class="shoe-grid">
+                <div class="shoe-card">
+                    <div class="shoe-image-container">
+                        <img src="https://images.unsplash.com/photo-1600269452121-4f2416e55c28?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80" alt="轻量运动鞋" class="shoe-image">
+                        <span class="shoe-badge">新品</span>
+                    </div>
+                    <div class="shoe-info">
+                        <h3 class="shoe-name">轻量运动鞋 Pro</h3>
+                        <p class="shoe-description">采用最新透气科技，重量减轻30%，提供卓越的支撑性和回弹性。</p>
+                        <div class="shoe-price">¥599</div>
+                        <button class="cta-button">立即购买</button>
+                    </div>
+                </div>
+                
+                <div class="shoe-card">
+                    <div class="shoe-image-container">
+                        <img src="https://images.unsplash.com/photo-1542291026-7eec264c27ff?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80" alt="商务休闲鞋" class="shoe-image">
+                        <span class="shoe-badge">热销</span>
+                    </div>
+                    <div class="shoe-info">
+                        <h3 class="shoe-name">商务休闲鞋</h3>
+                        <p class="shoe-description">经典款式升级，记忆棉鞋垫，适合全天候穿着，商务休闲两相宜。</p>
+                        <div class="shoe-price">¥499</div>
+                        <button class="cta-button">立即购买</button>
+                    </div>
+                </div>
+                
+                <div class="shoe-card">
+                    <div class="shoe-image-container">
+                        <img src="https://images.unsplash.com/photo-1460353581641-37baddab0fa2?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80" alt="专业跑步鞋" class="shoe-image">
+                    </div>
+                    <div class="shoe-info">
+                        <h3 class="shoe-name">专业跑步鞋</h3>
+                        <p class="shoe-description">专业缓震系统，能量回馈高达75%，马拉松选手首选。</p>
+                        <div class="shoe-price">¥699</div>
+                        <button class="cta-button">立即购买</button>
+                    </div>
+                </div>
+                
+                <div class="shoe-card">
+                    <div class="shoe-image-container">
+                        <img src="https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80" alt="时尚帆布鞋" class="shoe-image">
+                    </div>
+                    <div class="shoe-info">
+                        <h3 class="shoe-name">时尚帆布鞋</h3>
+                        <p class="shoe-description">经典帆布材质，环保橡胶底，多色可选，搭配无忧。</p>
+                        <div class="shoe-price">¥299</div>
+                        <button class="cta-button">立即购买</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- 品牌特色区 -->
+        <section class="feature-section">
+            <h2 class="section-title" style="color: white; border-color: white;">我们的优势</h2>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">✓</div>
+                    <h3 class="feature-title">精选材料</h3>
+                    <p>只选用通过严格测试的优质皮革和环保面料，确保每一双鞋都经久耐用。</p>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">♥</div>
+                    <h3 class="feature-title">舒适设计</h3>
+                    <p>联合骨科专家研发的鞋型设计，提供完美的足部支撑，长时间穿着也不累。</p>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">✧</div>
+                    <h3 class="feature-title">匠心工艺</h3>
+                    <p>每双鞋都经过200道工序手工制作，细节之处彰显品质。</p>
+                </div>
+            </div>
+        </section>
+        
+        <!-- 经典系列 -->
+        <section class="product-showcase">
+            <h2 class="section-title">经典系列</h2>
+            <div class="shoe-grid">
+                <div class="shoe-card">
+                    <div class="shoe-image-container">
+                        <img src="https://images.unsplash.com/photo-1600185365483-26d7a4cc7519?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80" alt="经典牛津鞋" class="shoe-image">
+                    </div>
+                    <div class="shoe-info">
+                        <h3 class="shoe-name">经典牛津鞋</h3>
+                        <p class="shoe-description">百年传承工艺，小牛皮打造，商务场合的不二之选。</p>
+                        <div class="shoe-price">¥899</div>
+                        <button class="cta-button">立即购买</button>
+                    </div>
+                </div>
+                
+                <div class="shoe-card">
+                    <div class="shoe-image-container">
+                        <img src="https://images.unsplash.com/photo-1542272604-787c3835535d?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80" alt="工装靴" class="shoe-image">
+                    </div>
+                    <div class="shoe-info">
+                        <h3 class="shoe-name">工装靴</h3>
+                        <p class="shoe-description">防滑耐磨大底，加厚内里，户外工作的可靠伙伴。</p>
+                        <div class="shoe-price">¥799</div>
+                        <button class="cta-button">立即购买</button>
+                    </div>
+                </div>
+                
+                <div class="shoe-card">
+                    <div class="shoe-image-container">
+                        <img src="https://images.unsplash.com/photo-1597045566677-8cf032ed6634?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80" alt="乐福鞋" class="shoe-image">
+                    </div>
+                    <div class="shoe-info">
+                        <h3 class="shoe-name">乐福鞋</h3>
+                        <p class="shoe-description">一脚蹬设计，柔软羊皮，休闲出行的舒适选择。</p>
+                        <div class="shoe-price">¥599</div>
+                        <button class="cta-button">立即购买</button>
+                    </div>
+                </div>
+                
+                <div class="shoe-card">
+                    <div class="shoe-image-container">
+                        <img src="https://images.unsplash.com/photo-1525966222134-fcfa99b8ae77?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80" alt="运动休闲鞋" class="shoe-image">
+                    </div>
+                    <div class="shoe-info">
+                        <h3 class="shoe-name">运动休闲鞋</h3>
+                        <p class="shoe-description">轻量化设计，透气网面，日常运动与休闲的完美结合。</p>
+                        <div class="shoe-price">¥499</div>
+                        <button class="cta-button">立即购买</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- 客户评价区 -->
+        <section class="testimonial-section">
+            <h2 class="section-title">客户评价</h2>
+            <div class="testimonial-grid">
+                <div class="testimonial-card">
+                    <p class="testimonial-text">这是我穿过最舒适的运动鞋，跑步时脚感非常好，已经推荐给了我的跑友。</p>
+                    <div class="testimonial-author">
+                        <img src="https://randomuser.me/api/portraits/men/32.jpg" alt="张先生" class="author-avatar">
+                        <div class="author-info">
+                            <h4>张先生</h4>
+                            <p>跑步爱好者</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="testimonial-card">
+                    <p class="testimonial-text">商务休闲鞋既正式又舒适，每天上班都穿，已经买了三双不同颜色。</p>
+                    <div class="testimonial-author">
+                        <img src="https://randomuser.me/api/portraits/women/44.jpg" alt="李女士" class="author-avatar">
+                        <div class="author-info">
+                            <h4>李女士</h4>
+                            <p>企业高管</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="testimonial-card">
+                    <p class="testimonial-text">工装靴质量非常好，在工地穿了半年还像新的一样，性价比超高。</p>
+                    <div class="testimonial-author">
+                        <img src="https://randomuser.me/api/portraits/men/75.jpg" alt="王师傅" class="author-avatar">
+                        <div class="author-info">
+                            <h4>王师傅</h4>
+                            <p>建筑工人</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- 常见问题区 -->
+        <section class="faq-section">
+            <h2 class="section-title">常见问题</h2>
+            <div class="faq-item">
+                <div class="faq-question">
+                    <span>如何选择正确的鞋码？</span>
+                    <span>+</span>
+                </div>
+                <div class="faq-answer">
+                    <p>我们建议您参考我们的尺码指南，测量脚长后对照表格选择。不同鞋型可能有轻微差异，如有疑问请联系客服。</p>
+                </div>
+            </div>
+            
+            <div class="faq-item">
+                <div class="faq-question">
+                    <span>鞋子如何保养？</span>
+                    <span>+</span>
+                </div>
+                <div class="faq-answer">
+                    <p>不同材质的鞋子保养方法不同。真皮鞋应定期使用专用鞋油保养，帆布鞋可水洗但避免暴晒。每双鞋都附有详细的保养说明。</p>
+                </div>
+            </div>
+            
+            <div class="faq-item">
+                <div class="faq-question">
+                    <span>退换货政策是怎样的？</span>
+                    <span>+</span>
+                </div>
+                <div class="faq-answer">
+                    <p>我们提供7天无理由退换服务，商品需保持完好未经穿着。质量问题15天内免费退换。详情请参阅我们的退换货政策。</p>
+                </div>
+            </div>
+        </section>
+        
+        <!-- 页脚 -->
+        <footer>
+            <div class="footer-links">
+                <a href="#">关于我们</a>
+                <a href="#">联系方式</a>
+                <a href="#">隐私政策</a>
+                <a href="#">退换货政策</a>
+                <a href="#">加盟合作</a>
+            </div>
+            <p class="copyright">© 2023 高端鞋履品牌 版权所有</p>
+        </footer>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // 常见问题折叠功能
+            const faqQuestions = document.querySelectorAll('.faq-question');
+            faqQuestions.forEach(question => {
+                question.addEventListener('click', () => {
+                    const answer = question.nextElementSibling;
+                    answer.style.display = answer.style.display === 'none' ? 'block' : 'none';
+                    const icon = question.querySelector('span:last-child');
+                    icon.textContent = icon.textContent === '+' ? '-' : '+';
+                });
+            });
+            
+            // 初始化隐藏所有答案
+            document.querySelectorAll('.faq-answer').forEach(answer => {
+                answer.style.display = 'none';
+            });
+            
+            // 模拟添加到购物车
+            const ctaButtons = document.querySelectorAll('.cta-button');
+            ctaButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    const productName = this.closest('.shoe-card').querySelector('.shoe-name').textContent;
+                    alert(`已添加 ${productName} 到购物车`);
+                });
+            });
+        });
+    </script>
+</body>
+</html>

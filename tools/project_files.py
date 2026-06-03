@@ -1,5 +1,7 @@
 # ── 项目文件管理工具 ──────────────────────────────────────────────────────────
-# 当前实现：本地文件系统（projects/{user_id}/{thread_id}/）
+# 当前实现：本地文件系统。
+# 新版优先使用 projects/{user_id}/{brand_id}/{project_id}/；
+# 如果请求里没有 brand_id/project_id，则兼容旧目录 projects/{user_id}/{thread_id}/。
 #
 # 切换阿里云 OSS：
 #   import oss2
@@ -11,8 +13,13 @@
 
 import os
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 from langchain_core.tools import tool
 from langchain.tools import ToolRuntime
+from tools.brand_context import (
+    project_base_dir_from_config,
+    project_url_from_config,
+)
 
 PROJECTS_ROOT = os.path.join(os.path.dirname(os.path.dirname(__file__)), "projects")
 
@@ -20,17 +27,59 @@ PROJECTS_ROOT = os.path.join(os.path.dirname(os.path.dirname(__file__)), "projec
 def _get_base_dir(runtime: ToolRuntime) -> str:
     """获取当前用户/线程的项目根目录。"""
     configurable = (runtime.config or {}).get("configurable", {})
-    user_id = str(configurable.get("user_id") or "default-user")
-    thread_id = str(configurable.get("thread_id") or "default-thread")
-    return os.path.join(PROJECTS_ROOT, user_id, thread_id)
+    return str(project_base_dir_from_config(configurable))
 
 
-def _safe_path(base_dir: str, file_path: str) -> Path:
-    """防止路径穿越：确保最终路径在 base_dir 内。"""
+def _resolve_safe_path(base_dir: str, file_path: str) -> tuple[Path, str]:
+    """防止路径穿越，并兼容模型误传的 /projects/... 预览路径。"""
     base = Path(base_dir).resolve()
-    target = (base / file_path).resolve()
-    target.relative_to(base)  # 不在 base 内会抛 ValueError
-    return target
+    normalized = _normalize_file_path(base, file_path)
+    target = (base / normalized).resolve()
+    try:
+        rel_path = target.relative_to(base)
+    except ValueError as exc:
+        raise ValueError("路径不在当前项目目录内") from exc
+    return target, str(rel_path)
+
+
+def _normalize_file_path(base: Path, file_path: str) -> str:
+    raw = (file_path or "").strip()
+    if not raw:
+        raise ValueError("文件路径不能为空")
+
+    parsed = urlparse(raw)
+    if parsed.scheme and parsed.netloc:
+        raw = parsed.path
+
+    raw = unquote(raw.split("#", 1)[0].split("?", 1)[0]).strip()
+    projects_root = Path(PROJECTS_ROOT).resolve()
+
+    if raw.startswith("/projects/"):
+        target = (projects_root / raw.removeprefix("/projects/")).resolve()
+        try:
+            return str(target.relative_to(base))
+        except ValueError as exc:
+            raise ValueError("预览路径不属于当前项目") from exc
+
+    if raw.startswith("projects/"):
+        target = (projects_root / raw.removeprefix("projects/")).resolve()
+        try:
+            return str(target.relative_to(base))
+        except ValueError as exc:
+            raise ValueError("项目路径不属于当前项目") from exc
+
+    path = Path(raw)
+    if path.is_absolute():
+        try:
+            return str(path.resolve().relative_to(base))
+        except ValueError as exc:
+            raise ValueError("绝对路径不属于当前项目") from exc
+
+    return raw
+
+
+def _path_error(error: ValueError) -> str:
+    return f"文件路径非法：{error}。请传当前项目内的相对路径，例如 index.html。"
 
 
 @tool
@@ -42,16 +91,18 @@ def write_project_file(file_path: str, content: str, runtime: ToolRuntime) -> st
         content: 文件内容
     """
     base_dir = _get_base_dir(runtime)
-    full_path = _safe_path(base_dir, file_path)
+    try:
+        full_path, normalized_path = _resolve_safe_path(base_dir, file_path)
+    except ValueError as e:
+        return _path_error(e)
 
     full_path.parent.mkdir(parents=True, exist_ok=True)
     full_path.write_text(content, encoding="utf-8")
 
     # 返回可访问的 URL 路径
     configurable = (runtime.config or {}).get("configurable", {})
-    user_id = str(configurable.get("user_id") or "default-user")
-    thread_id = str(configurable.get("thread_id") or "default-thread")
-    return f"文件已保存：/projects/{user_id}/{thread_id}/{file_path}"
+    preview_url = project_url_from_config(configurable, normalized_path)
+    return f"文件已保存：{preview_url}\n[PREVIEW:{preview_url}]"
 
 
 @tool
@@ -62,10 +113,13 @@ def read_project_file(file_path: str, runtime: ToolRuntime) -> str:
         file_path: 文件相对路径，如 "index.html"
     """
     base_dir = _get_base_dir(runtime)
-    full_path = _safe_path(base_dir, file_path)
+    try:
+        full_path, normalized_path = _resolve_safe_path(base_dir, file_path)
+    except ValueError as e:
+        return _path_error(e)
 
     if not full_path.exists():
-        return f"文件不存在：{file_path}"
+        return f"文件不存在：{normalized_path}"
     return full_path.read_text(encoding="utf-8")
 
 

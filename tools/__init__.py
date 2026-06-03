@@ -400,6 +400,48 @@ def search_knowledge(query: str, top_k: int = 3) -> str:
         return f"检索失败：{e}"
 
 
+def parse_document_to_text(file_path: str) -> str:
+    """解析本地文档并返回文本；txt/md 直接读取，其他格式走 LlamaCloud。"""
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"文件不存在：{file_path}")
+
+    suffix = os.path.splitext(file_path)[1].lower()
+    if suffix in {".txt", ".md", ".markdown"}:
+        with open(file_path, encoding="utf-8") as f:
+            text = f.read()
+        if not text.strip():
+            raise ValueError("未提取到任何内容。")
+        return text
+
+    api_key = os.getenv("LLAMA_INDEX_API_KEY")
+    if not api_key:
+        raise RuntimeError("缺少 LLAMA_INDEX_API_KEY 环境变量。")
+
+    from llama_cloud import LlamaCloud
+
+    client = LlamaCloud(api_key=api_key)
+    with open(file_path, "rb") as f:
+        file = client.files.create(file=(os.path.basename(file_path), f), purpose="parse")
+    result = client.parsing.parse(
+        file_id=file.id,
+        tier="agentic",
+        version="latest",
+        expand=["markdown"],
+    )
+    pages = result.markdown
+    if not pages:
+        raise ValueError("未提取到任何内容。")
+    full_text = "\n\n".join(p.markdown for p in pages.pages)
+    if not full_text.strip():
+        raise ValueError("未提取到任何内容。")
+    return full_text
+
+
+def save_document_text(doc_id: str, text: str) -> int:
+    """把已解析的文本保存到向量数据库，返回分块数。"""
+    return _vs_upsert_document(doc_id, text)
+
+
 @tool
 def parse_and_save_document(file_path: str, doc_id: str) -> str:
     """用 LlamaCloud 解析本地 PDF、Word 等文件，并通过 LlamaIndex 自动分块保存到向量数据库。
@@ -409,30 +451,10 @@ def parse_and_save_document(file_path: str, doc_id: str) -> str:
         file_path: 本地文件的绝对路径或相对路径，例如 "/tmp/report.pdf"
         doc_id: 文档唯一标识，例如 "报告-2026-05"、"合同-A公司"
     """
-    api_key = os.getenv("LLAMA_INDEX_API_KEY")
-    if not api_key:
-        return "解析失败：缺少 LLAMA_INDEX_API_KEY 环境变量。"
-    if not os.path.exists(file_path):
-        return f"解析失败：文件不存在：{file_path}" 
 
     try:
-        from llama_cloud import LlamaCloud
-        client = LlamaCloud(api_key=api_key)
-        with open(file_path, "rb") as f:
-            file = client.files.create(file=(os.path.basename(file_path), f), purpose="parse")
-        result = client.parsing.parse(
-            file_id=file.id,
-            tier="agentic",
-            version="latest",
-            expand=["markdown"],
-        )
-        pages = result.markdown
-        if not pages:
-            return "解析失败：未提取到任何内容。"
-        full_text = "\n\n".join(p.markdown for p in pages.pages)
-        if not full_text.strip():
-            return "解析失败：未提取到任何内容。"
-        n = _vs_upsert_document(doc_id, full_text)
+        full_text = parse_document_to_text(file_path)
+        n = save_document_text(doc_id, full_text)
         return f"已解析并保存文档「{doc_id}」，自动分成 {n} 块"
     except Exception as e:
         return f"解析失败：{e}"

@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>服装展示</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
+        .root-container {
+            font-family: 'Roboto', sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            color: #333;
+        }
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        h1 {
+            font-size: 2.5rem;
+            color: #2c3e50;
+        }
+        .product-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 20px;
+        }
+        .product-card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+            transition: transform 0.3s;
+        }
+        .product-card:hover {
+            transform: translateY(-5px);
+        }
+        .product-image {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+        }
+        .product-info {
+            padding: 15px;
+        }
+        .product-title {
+            font-size: 1.2rem;
+            margin: 0 0 10px;
+        }
+        .product-price {
+            font-weight: bold;
+            color: #e74c3c;
+        }
+        .cta-button {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #3498db;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-top: 20px;
+            text-align: center;
+        }
+        footer {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+    <div class="root-container">
+        <header>
+            <h1>时尚服装系列</h1>
+            <p>精选优质面料，打造舒适穿着体验</p>
+        </header>
+
+        <div class="product-grid">
+            <div class="product-card">
+                <img src="https://via.placeholder.com/300x200?text=T-Shirt" alt="T恤" class="product-image">
+                <div class="product-info">
+                    <h3 class="product-title">简约纯棉T恤</h3>
+                    <p class="product-price">¥99</p>
+                </div>
+            </div>
+            <div class="product-card">
+                <img src="https://via.placeholder.com/300x200?text=Jeans" alt="牛仔裤" class="product-image">
+                <div class="product-info">
+                    <h3 class="product-title">修身牛仔裤</h3>
+                    <p class="product-price">¥199</p>
+                </div>
+            </div>
+            <div class="product-card">
+                <img src="https://via.placeholder.com/300x200?text=Jacket" alt="夹克" class="product-image">
+                <div class="product-info">
+                    <h3 class="product-title">休闲夹克</h3>
+                    <p class="product-price">¥299</p>
+                </div>
+            </div>
+            <div class="product-card">
+                <img src="https://via.placeholder.com/300x200?text=Dress" alt="连衣裙" class="product-image">
+                <div class="product-info">
+                    <h3 class="product-title">夏季连衣裙</h3>
+                    <p class="product-price">¥249</p>
+                </div>
+            </div>
+        </div>
+
+        <div style="text-align: center; margin: 40px 0;">
+            <a href="#" class="cta-button">查看全部商品</a>
+        </div>
+
+        <footer>
+            <p>© 2023 服装品牌. 版权所有</p>
+            <p>联系方式: info@example.com | 400-123-4567</p>
+        </footer>
+    </div>
+</body>
+</html>

@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1"
+    />
+    <title>VIVAIA 周年庆活动</title>
+    <meta name="description" content="庆祝 VIVAIA 周年庆，限时优惠，舒适环保鞋款等你来选！" />
+    <style>
+      /* Global Reset */
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        overflow-x: hidden;
+        font-family: Arial, sans-serif;
+      }
+
+      /* Root Container */
+      .root-container {
+        width: 100%;
+        max-width: 100%;
+        margin: 0 auto;
+        background-color: #ffffff;
+      }
+
+      /* Header Section */
+      .header {
+        background-color: #f8f8f8;
+        padding: 20px 10px;
+        text-align: center;
+      }
+
+      .header h1 {
+        font-size: 28px;
+        color: #333;
+        margin: 0;
+      }
+
+      .header p {
+        font-size: 14px;
+        color: #666;
+        margin: 10px 0 0;
+      }
+
+      /* Banner Section */
+      .banner {
+        width: 100%;
+        padding: 40px 10px;
+        background-color: #e8f5e9;
+        text-align: center;
+      }
+
+      .banner h2 {
+        font-size: 26px;
+        color: #2e7d32;
+        margin: 0 0 14px;
+      }
+
+      .banner p {
+        font-size: 14px;
+        color: #333;
+        margin: 0 0 40px;
+      }
+
+      .banner img {
+        width: 100%;
+        max-width: 600px;
+        height: auto;
+        aspect-ratio: 16 / 9;
+        object-fit: cover;
+        display: block;
+        margin: 0 auto;
+      }
+
+      /* Products Section */
+      .products {
+        padding: 40px 10px;
+        background-color: #ffffff;
+        text-align: center;
+      }
+
+      .products h2 {
+        font-size: 26px;
+        color: #333;
+        margin: 0 0 40px;
+      }
+
+      .product-grid {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 20px;
+      }
+
+      .product-card {
+        width: 100%;
+        max-width: 300px;
+        background-color: #f8f8f8;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+
+      .product-card img {
+        width: 100%;
+        height: auto;
+        aspect-ratio: 1 / 1;
+        object-fit: cover;
+      }
+
+      .product-card h3 {
+        font-size: 20px;
+        color: #333;
+        margin: 10px 0;
+      }
+
+      .product-card p {
+        font-size: 14px;
+        color: #666;
+        margin: 0 0 10px;
+      }
+
+      .product-card .price {
+        font-size: 18px;
+        color: #2e7d32;
+        font-weight: bold;
+        margin: 10px 0;
+      }
+
+      .product-card button {
+        width: 100%;
+        padding: 10px;
+        background-color: #2e7d32;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        font-size: 16px;
+        cursor: pointer;
+        margin: 10px 0;
+      }
+
+      /* Footer Section */
+      .footer {
+        padding: 20px 10px;
+        background-color: #f8f8f8;
+        text-align: center;
+      }
+
+      .footer p {
+        font-size: 12px;
+        color: #666;
+        margin: 0;
+      }
+
+      /* Media Queries for PC */
+      @media (min-width: 768px) {
+        .root-container {
+          max-width: 1320px;
+          padding: 0 300px;
+        }
+
+        .header h1 {
+          font-size: 58px;
+        }
+
+        .header p {
+          font-size: 24px;
+        }
+
+        .banner h2 {
+          font-size: 48px;
+        }
+
+        .banner p {
+          font-size: 24px;
+        }
+
+        .products h2 {
+          font-size: 48px;
+        }
+
+        .product-card h3 {
+          font-size: 32px;
+        }
+
+        .product-card p {
+          font-size: 20px;
+        }
+
+        .product-card .price {
+          font-size: 24px;
+        }
+
+        .product-card button {
+          font-size: 20px;
+        }
+
+        .footer p {
+          font-size: 14px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="root-container">
+      <!-- Header -->
+      <div class="header">
+        <h1>VIVAIA 周年庆</h1>
+        <p>庆祝品牌成立周年，限时优惠活动</p>
+      </div>
+
+      <!-- Banner -->
+      <div class="banner">
+        <h2>限时优惠</h2>
+        <p>舒适环保鞋款，低至5折</p>
+        <img
+          src="https://staticdn.vivaia.com/onem/vivaia/img/logo-bg.897e720.svg"
+          alt="VIVAIA 周年庆"
+          loading="lazy"
+        />
+      </div>
+
+      <!-- Products -->
+      <div class="products">
+        <h2>精选鞋款</h2>
+        <div class="product-grid">
+          <div class="product-card">
+            <img
+              src="https://staticdn.vivaia.com/onem/vivaia/img/logo-bg.897e720.svg"
+              alt="VIVAIA 鞋款1"
+              loading="lazy"
+            />
+            <h3>舒适休闲鞋</h3>
+            <p>环保材质，轻盈舒适</p>
+            <p class="price">$99.99</p>
+            <button>立即购买</button>
+          </div>
+          <div class="product-card">
+            <img
+              src="https://staticdn.vivaia.com/onem/vivaia/img/logo-bg.897e720.svg"
+              alt="VIVAIA 鞋款2"
+              loading="lazy"
+            />
+            <h3>优雅高跟鞋</h3>
+            <p>时尚设计，舒适支撑</p>
+            <p class="price">$129.99</p>
+            <button>立即购买</button>
+          </div>
+          <div class="product-card">
+            <img
+              src="https://staticdn.vivaia.com/onem/vivaia/img/logo-bg.897e720.svg"
+              alt="VIVAIA 鞋款3"
+              loading="lazy"
+            />
+            <h3>运动休闲鞋</h3>
+            <p>透气轻便，适合日常</p>
+            <p class="price">$89.99</p>
+            <button>立即购买</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="footer">
+        <p>&copy; 2023 VIVAIA. All Rights Reserved.</p>
+      </div>
+    </div>
+  </body>
+</html>

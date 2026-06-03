@@ -40,6 +40,17 @@
             <input v-model="docId" class="field-input" placeholder="留空则用文件名" />
           </div>
 
+          <div class="field-row">
+            <label class="field-label">类型</label>
+            <select v-model="docType" class="field-input">
+              <option value="brand_skill">品牌 Skill</option>
+              <option value="landing_page_rule">落地页规则</option>
+              <option value="product_doc">产品资料</option>
+              <option value="reference">参考资料</option>
+              <option value="knowledge">普通知识</option>
+            </select>
+          </div>
+
           <div class="modal-footer">
             <button class="btn" @click="close">取消</button>
             <button class="btn btn--primary" :disabled="!selectedFile" @click="confirm">确认</button>
@@ -64,12 +75,13 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 
 const emit = defineEmits<{
-  'file-selected': [payload: { file: File; docId: string }]
+  'file-selected': [payload: { file: File; docId: string; docType: string }]
 }>()
 
 const dialogVisible = ref(false)
 const selectedFile = ref<File | null>(null)
 const docId = ref('')
+const docType = ref('brand_skill')
 const isOver = ref(false)
 const isDraggingOver = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -86,6 +98,7 @@ function confirm() {
   emit('file-selected', {
     file: selectedFile.value,
     docId: docId.value || selectedFile.value.name.replace(/\.[^.]+$/, ''),
+    docType: docType.value,
   })
   close()
 }

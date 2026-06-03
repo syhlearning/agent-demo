@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import FastAPI, UploadFile, File, Form, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -32,6 +32,14 @@ jsonplus.LC_REVIVER = Reviver(allowed_objects="core")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # llama_store 的 PGVectorStore 会自动建表（perform_setup=True）
+    try:
+        from db.checkpoint_cleanup import auto_cleanup_enabled, cleanup_old_checkpoints
+
+        if auto_cleanup_enabled():
+            result = cleanup_old_checkpoints()
+            print(f"[checkpoint cleanup] {result}")
+    except Exception as e:
+        print(f"[checkpoint cleanup] skipped: {e}")
     yield
 
 
@@ -55,9 +63,14 @@ async def index():
 async def upload(
     file: UploadFile = File(...),   # 前端上传的文件（multipart）
     doc_id: str = Form(...),        # 前端表单里的文档 ID
+    user_id: str = Form("default-user"),
+    brand_id: str = Form("default-brand"),
+    project_id: str = Form(""),
+    doc_type: str = Form("knowledge"),
 ):
     import tempfile
-    from tools import parse_and_save_document
+    from tools import parse_document_to_text, save_document_text
+    from tools.brand_context import save_brand_document_text
 
     # 取文件扩展名（如 .pdf），让临时文件保持正确格式供 LlamaCloud 识别
     suffix = os.path.splitext(file.filename or "")[1]
@@ -69,11 +82,29 @@ async def upload(
         tmp_path = tmp.name  # 记住路径，后面用完要手动删
 
     try:
-        # 调用解析工具：LlamaCloud 解析文件 → LlamaIndex 分块存入向量数据库
-        result = parse_and_save_document.invoke({"file_path": tmp_path, "doc_id": doc_id})
-        if "失败" in result:
-            return JSONResponse({"ok": False, "message": result}, status_code=500)
-        return JSONResponse({"ok": True, "message": result})
+        # LlamaCloud/文本解析 → LlamaIndex 分块存入向量数据库
+        full_text = parse_document_to_text(tmp_path)
+        scoped_doc_id = f"{user_id}:{brand_id}:{doc_type}:{doc_id}"
+        chunks = save_document_text(scoped_doc_id, full_text)
+
+        brand_saved = False
+        if doc_type in {"brand_skill", "landing_page_rule", "product_doc", "reference"}:
+            save_brand_document_text(
+                user_id=user_id,
+                brand_id=brand_id,
+                doc_id=doc_id,
+                doc_type=doc_type,
+                text=full_text,
+                source_filename=file.filename or "",
+            )
+            brand_saved = True
+
+        message = f"已解析并保存文档「{doc_id}」，自动分成 {chunks} 块"
+        if brand_saved:
+            message += f"，并已写入品牌「{brand_id}」的 {doc_type} 资料"
+        if project_id:
+            message += f"，当前项目：{project_id}"
+        return JSONResponse({"ok": True, "message": message, "brandSaved": brand_saved})
     except Exception as e:
         # 捕获所有异常，统一返回 JSON，避免前端收到空响应报错
         return JSONResponse({"ok": False, "message": str(e)}, status_code=500)
@@ -97,3 +128,22 @@ async def list_conversations(user_id: str):
                 "createdAt": int(os.path.getctime(full) * 1000),
             })
     return JSONResponse(threads)
+
+
+@app.get("/api/checkpoint-cleanup/stats")
+async def checkpoint_cleanup_preview(days: int = Query(30, ge=1, le=3650)):
+    """查看超过保留期的 LangGraph checkpoint 数量，不删除。"""
+    from db.checkpoint_cleanup import checkpoint_cleanup_stats
+
+    return JSONResponse(checkpoint_cleanup_stats(days))
+
+
+@app.post("/api/checkpoint-cleanup")
+async def checkpoint_cleanup(
+    days: int = Query(30, ge=1, le=3650),
+    dry_run: bool = Query(False),
+):
+    """清理超过保留期的 LangGraph 对话 checkpoint；不删除页面项目和品牌资料。"""
+    from db.checkpoint_cleanup import cleanup_old_checkpoints
+
+    return JSONResponse(cleanup_old_checkpoints(days=days, dry_run=dry_run))

@@ -10,6 +10,7 @@ from llama_index.core import Settings, VectorStoreIndex, StorageContext
 from llama_index.core.schema import Document as LlamaDocument
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core.embeddings import BaseEmbedding
+from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
 from llama_index.vector_stores.postgres import PGVectorStore
 from db import embeddings as _emb
 
@@ -84,20 +85,22 @@ def _get_index() -> VectorStoreIndex:
     return VectorStoreIndex.from_vector_store(vs, storage_context=storage_context)
 
 
-def upsert(id: str, text: str) -> None:
+def upsert(id: str, text: str, metadata: dict | None = None) -> None:
     """存储单条文本（自动嵌入）。"""
     _configure()
     vs = _get_vector_store()
     storage_context = StorageContext.from_defaults(vector_store=vs)
     # 空索引，只用来插入新数据
     index = VectorStoreIndex([], storage_context=storage_context)
-    index.insert(LlamaDocument(text=text, id_=id, metadata={"doc_id": id}))
+    doc_meta = {"doc_id": id, **(metadata or {})}
+    index.insert(LlamaDocument(text=text, id_=id, metadata=doc_meta))
 
 
-def upsert_document(doc_id: str, text: str) -> int:
+def upsert_document(doc_id: str, text: str, metadata: dict | None = None) -> int:
     """把长文本自动分块后存入向量数据库，返回实际块数。"""
     _configure()
-    doc = LlamaDocument(text=text, id_=doc_id, metadata={"doc_id": doc_id})
+    doc_meta = {"doc_id": doc_id, **(metadata or {})}
+    doc = LlamaDocument(text=text, id_=doc_id, metadata=doc_meta)
     # 提前用 splitter 跑一遍估算块数，用于返回值；实际切块由 index.insert 内部完成
     nodes = SentenceSplitter(chunk_size=512, chunk_overlap=50).get_nodes_from_documents([doc])
     vs = _get_vector_store()
@@ -149,7 +152,7 @@ def _rerank(query: str, docs: list[dict], top_n: int) -> list[dict]:
         return docs[:top_n]
 
 
-def search(query: str, top_k: int = 5) -> list[dict]:
+def search(query: str, top_k: int = 5, metadata: dict | None = None) -> list[dict]:
     """语义检索 + Reranking。
     流程：向量粗排 top_k*4 → qwen3-rerank 精排 → 返回 top_k 条。
     """
@@ -157,7 +160,16 @@ def search(query: str, top_k: int = 5) -> list[dict]:
     index = _get_index()  # 挂载已有数据的索引
     # 粗排：多取一些候选（top_k 的 4 倍），给 reranker 更多选择空间
     coarse_top = top_k * 4
-    nodes = index.as_retriever(similarity_top_k=coarse_top).retrieve(query)
+    filters = None
+    if metadata:
+        filters = MetadataFilters(
+            filters=[
+                ExactMatchFilter(key=key, value=value)
+                for key, value in metadata.items()
+            ]
+        )
+    retriever = index.as_retriever(similarity_top_k=coarse_top, filters=filters)
+    nodes = retriever.retrieve(query)
 
     coarse_results = [
         {

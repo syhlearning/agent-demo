@@ -1,5 +1,7 @@
 import sys
 import os
+import re
+import hashlib
 import warnings
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -44,8 +46,27 @@ from tools import (
     parse_and_save_document,
 )
 from tools.project_files import write_project_file, read_project_file, list_project_files
+from langchain_core.runnables import RunnableConfig
+from tools.brand_context import (
+    get_brand_profile,
+    get_project_scope,
+    project_base_dir_from_config,
+    project_url_from_config,
+    search_brand_skills,
+    validate_landing_page,
+    validate_landing_page_file,
+)
+from tools.conversation_memory import (
+    get_project_memory,
+    get_thread_summary,
+    save_conversation_summary,
+    search_conversation_memory,
+    update_project_memory,
+)
 # 持久存储（长期记忆）- main() 命令行测试用
 from langgraph.store.postgres import PostgresStore
+from langgraph.store.base import BaseStore
+from db.llama_store import upsert as _vs_upsert
 # from db.vector_store import setup as vs_setup  ← 旧版 LangChain PGVector，已切换到 llama_store，不再需要
 
 jsonplus.LC_REVIVER = Reviver(allowed_objects="core") 
@@ -64,12 +85,17 @@ load_dotenv()
 DB_URL = os.getenv("DATABASE_URL")
 USER_ID = os.getenv("USER_ID", "default-user")
 
-# 初始化聊天模型。wan2.7-image-pro 是图片模型，通过 generate_wan_image 工具调用。
+# model = init_chat_model(
+#     model="deepseek-chat",
+#     model_provider="openai",
+#     api_key=os.getenv("DEEPSEEK_API_KEY"),
+#     base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+# )
 model = init_chat_model(
-    model="deepseek-chat",
+    model="deepseek-v3",
     model_provider="openai",
-    api_key=os.getenv("DEEPSEEK_API_KEY"),
-    base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+    api_key=os.getenv("DASHSCOPE_API_KEY"),
+    base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
 )
 
 # Supervisor 专用模型（Qwen 支持 structured output，DeepSeek 该功能不稳定）
@@ -107,6 +133,9 @@ TOOLS = [
     save_user_info, get_user_info, delete_user_info,
     generate_wan_image, save_knowledge, save_long_document,
     search_knowledge, parse_and_save_document,
+    get_brand_profile, search_brand_skills, validate_landing_page,
+    get_project_memory, get_thread_summary, save_conversation_summary,
+    search_conversation_memory, update_project_memory,
 ]
 
 # 顶层暴露 graph 变量，langgraph.json 通过 "./agent_graph.py:graph" 找到它
@@ -261,20 +290,38 @@ creator = create_agent(
 
 code_generator = create_agent(
     model=model,
-    tools=[write_project_file, read_project_file, list_project_files],
+    tools=[
+        get_brand_profile,
+        search_brand_skills,
+        get_project_memory,
+        get_thread_summary,
+        search_conversation_memory,
+        write_project_file,
+        read_project_file,
+        list_project_files,
+        validate_landing_page,
+        update_project_memory,
+        save_conversation_summary,
+    ],
     system_prompt=(
         "你是网页代码生成专家。负责生成完整的 HTML/CSS/JS 落地页代码。\n\n"
         "工作流程：\n"
-        "1. 如果用户要求修改已有页面，必须先用 list_project_files 查看当前项目文件，再用 read_project_file 读取相关文件，尤其是 index.html\n"
-        "2. 根据用户需求生成或修改完整的 HTML 页面（CSS 和 JS 内联在 HTML 中）\n"
-        "3. 必须使用 write_project_file 工具把最终页面保存为 index.html\n"
-        "4. 禁止只把代码输出给用户手动保存；禁止声称自己无法保存、无法修改文件，除非 write_project_file 工具明确返回失败\n"
-        "5. 修改已有页面时，不要创建 index-tail.html、patch.js、sand-patch.js 等补丁文件来代替修改；必须把合并后的完整结果写回 index.html\n"
-        "6. 代码应该是完整的、可直接在浏览器打开的 HTML 文件\n"
-        "7. 设计要现代、美观、响应式，使用渐变、阴影、动画等提升视觉效果\n"
-        "8. 保存文件后，在回复的最后一行必须包含预览标记，格式为：\n"
-        "   [PREVIEW:/projects/{user_id}/{thread_id}/index.html]\n"
-        "   其中 user_id 和 thread_id 从 write_project_file 的返回值中提取\n\n"
+        "1. 任何生成或修改落地页任务，必须先读取记忆和规范：get_project_memory、get_thread_summary、search_conversation_memory、get_brand_profile；如果规范不足，再用 search_brand_skills 检索相关资料。\n"
+        "2. 记忆只作为上下文参考，优先级低于用户本轮明确要求、品牌 skill、落地页规则和当前 index.html；不要保存或放大历史里的失败工具调用、模型幻觉。\n"
+        "3. 如果用户要求修改已有页面，必须先用 list_project_files 查看当前项目文件，再用 read_project_file 读取相关文件，尤其是 index.html。\n"
+        "   调用 read_project_file、write_project_file、validate_landing_page 时，file_path 只能传当前项目内的相对路径，例如 index.html，不要传 /projects/... 预览路径或绝对路径。\n"
+        "4. 根据用户需求、品牌 skill、产品资料、当前页面和项目记忆，生成或修改完整的 HTML 页面（CSS 和 JS 内联在 HTML 中）。\n"
+        "5. 必须使用 write_project_file 工具把最终页面保存为 index.html。\n"
+        "6. 保存后必须调用 validate_landing_page 校验 index.html；如果返回 issues，必须修复后再次 write_project_file 保存。\n"
+        "7. 校验通过后，必须调用 update_project_memory 更新当前项目的稳定摘要和关键决策；再调用 save_conversation_summary 保存本轮修改摘要到长期向量记忆。\n"
+        "8. 禁止只把代码输出给用户手动保存；禁止声称自己无法保存、无法修改文件，除非 write_project_file 工具明确返回失败。\n"
+        "9. 修改已有页面时，不要创建 index-tail.html、patch.js、sand-patch.js 等补丁文件来代替修改；必须把合并后的完整结果写回 index.html。\n"
+        "10. 代码应该是完整的、可直接在浏览器打开的 HTML 文件。\n"
+        "11. 设计必须服从品牌 skill：品牌色、字体/排版、语气、必需模块、禁用项的优先级高于通用审美建议。\n"
+        "12. 保存、校验和记忆更新后，在回复的最后一行必须包含预览标记，格式为：\n"
+        "   [PREVIEW:/projects/{user_id}/{brand_id}/{project_id}/index.html]\n"
+        "   其中 user_id、brand_id、project_id 从 write_project_file 的返回值中提取；如果返回的是旧路径，也必须原样使用返回值里的路径。\n\n"
+        "最终回复只需要简短说明已保存和预览链接，不要再输出完整 HTML 代码或代码块。\n\n"
         "重要 — Shadow DOM 兼容：\n"
         "生成的页面最终会被下载并嵌入到主站（主站有自己的头部和尾部），通过 Shadow DOM 隔离。\n"
         "因此你必须遵守以下规则：\n"
@@ -394,6 +441,226 @@ def route_after_review(state: SupervisorState):
     return next_val
 
 
+def _message_content(message) -> str:
+    content = getattr(message, "content", None)
+    if content is None and isinstance(message, dict):
+        content = message.get("content")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict) and isinstance(item.get("text"), str):
+                parts.append(item["text"])
+        return "\n".join(parts)
+    return str(content or "")
+
+
+def _message_type(message) -> str:
+    msg_type = getattr(message, "type", None)
+    if msg_type:
+        return str(msg_type)
+    if isinstance(message, dict):
+        return str(message.get("type") or "")
+    return ""
+
+
+def _current_turn_messages(state: SupervisorState) -> list:
+    messages = state.get("messages", [])
+    for idx in range(len(messages) - 1, -1, -1):
+        if _message_type(messages[idx]) == "human":
+            return messages[idx + 1 :]
+    return messages
+
+
+def _last_ai_content(state: SupervisorState) -> str:
+    for message in reversed(_current_turn_messages(state)):
+        if _message_type(message) == "ai":
+            return _message_content(message)
+    return ""
+
+
+def _latest_preview_path(state: SupervisorState) -> str | None:
+    preview_re = re.compile(r"\[PREVIEW:(/projects/[^\]\s]+)\]|(/projects/[^\s)\"'<>]+index\.html)")
+    for message in reversed(_current_turn_messages(state)):
+        text = _message_content(message)
+        match = preview_re.search(text)
+        if match:
+            return match.group(1) or match.group(2)
+    return None
+
+
+def _extract_html_document(text: str) -> str | None:
+    if not text:
+        return None
+
+    fence_re = re.compile(r"```(?:html)?\s*(.*?)```", re.IGNORECASE | re.DOTALL)
+    for match in fence_re.finditer(text):
+        candidate = match.group(1).strip()
+        if _looks_like_full_html(candidate):
+            return candidate
+
+    lower = text.lower()
+    starts = [idx for idx in (lower.find("<!doctype html"), lower.find("<html")) if idx >= 0]
+    if not starts:
+        return None
+    start = min(starts)
+    end = lower.rfind("</html>")
+    candidate = text[start : end + len("</html>")].strip() if end >= start else text[start:].strip()
+    return candidate if _looks_like_full_html(candidate) else None
+
+
+def _looks_like_full_html(text: str) -> bool:
+    lower = text.lower()
+    return (
+        len(text.strip()) >= 500
+        and ("<!doctype html" in lower or "<html" in lower)
+        and "<style" in lower
+        and ("</html>" in lower or "</body>" in lower)
+    )
+
+
+def _validation_summary(result: dict) -> str:
+    if result.get("ok"):
+        return "校验通过。"
+    issues = result.get("issues") or []
+    if not issues:
+        return "已保存，但校验结果未通过。"
+    return "已保存，但校验发现问题：" + "；".join(str(item) for item in issues[:3])
+
+
+def page_save_guard(state: SupervisorState, *, config: RunnableConfig) -> dict:
+    """兜底保存：模型直接输出完整 HTML 时，自动写回当前项目 index.html。"""
+    preview_path = _latest_preview_path(state)
+    last_ai = _last_ai_content(state)
+    if preview_path:
+        if "[PREVIEW:" in last_ai:
+            return {}
+        return {
+            "messages": [
+                AIMessage(content=f"页面已保存并更新预览。\n\n[PREVIEW:{preview_path}]")
+            ]
+        }
+
+    html = _extract_html_document(last_ai)
+    if not html:
+        return {}
+
+    configurable = (config or {}).get("configurable", {})
+    base_dir = project_base_dir_from_config(configurable)
+    base_dir.mkdir(parents=True, exist_ok=True)
+    target = base_dir / "index.html"
+    target.write_text(html, encoding="utf-8")
+
+    result = validate_landing_page_file(configurable, "index.html")
+    preview_url = result.get("preview_url") or project_url_from_config(configurable, "index.html")
+    return {
+        "messages": [
+            AIMessage(
+                content=(
+                    "模型这次直接输出了完整 HTML，我已自动把它保存到当前项目的 index.html。\n"
+                    f"{_validation_summary(result)}\n\n"
+                    f"[PREVIEW:{preview_url}]"
+                )
+            )
+        ]
+    }
+
+
+def auto_memory_node(state: SupervisorState, config: RunnableConfig, store: BaseStore) -> dict:
+    """code_generator / page_save_guard 完成后自动更新项目记忆，不依赖 LLM 主动调用工具。"""
+    # 本轮没有成功生成页面则跳过
+    if not _latest_preview_path(state):
+        return {}
+
+    configurable = (config or {}).get("configurable", {})
+    scope = get_project_scope(configurable)
+
+    # 从本轮对话消息生成摘要
+    recent = [
+        m for m in _current_turn_messages(state)
+        if _message_type(m) in ("human", "ai") and _message_content(m)
+    ]
+    conversation_text = "\n".join(
+        f"{_message_type(m)}: {_message_content(m)[:300]}" for m in recent[-10:]
+    )
+    try:
+        summary = model.invoke(
+            f"请用100字以内总结以下对话的核心结果（完成了什么、用户确认了什么）：\n{conversation_text}"
+        ).content.strip()
+    except Exception as e:
+        print(f"[auto_memory_node] 生成摘要失败：{e}")
+        return {}
+
+    now = datetime.now(_BJT).isoformat(timespec="seconds")
+
+    # 写入 PostgresStore（project_memory + thread_summary）
+    if store:
+        try:
+            store.put(
+                ("project_memory", str(scope["user_id"]), str(scope["brand_id"])),
+                str(scope["project_id"]),
+                {
+                    "summary": summary,
+                    "decisions": [],
+                    "current_file": "index.html",
+                    "updated_at": now,
+                    "user_id": str(scope["user_id"]),
+                    "brand_id": str(scope["brand_id"]),
+                    "project_id": str(scope["project_id"]),
+                },
+            )
+            store.put(
+                ("thread_summary", str(scope["user_id"]), str(scope["brand_id"]), str(scope["project_id"])),
+                str(scope["thread_id"]),
+                {
+                    "summary": summary,
+                    "topic": "landing_page",
+                    "updated_at": now,
+                    "thread_id": str(scope["thread_id"]),
+                },
+            )
+        except Exception as e:
+            print(f"[auto_memory_node] store 写入失败：{e}")
+
+    # 双写 pgvector（支持语义检索历史）
+    try:
+        digest = hashlib.sha1(f"{scope['thread_id']}:{summary}".encode()).hexdigest()[:12]
+        vector_id = (
+            f"conversation_memory:summary:"
+            f"{scope['user_id']}:{scope['brand_id']}:{scope['project_id']}:"
+            f"{scope['thread_id']}:{digest}"
+        )
+        _vs_upsert(
+            vector_id,
+            (
+                f"memory_domain: conversation_memory\n"
+                f"memory_type: conversation_summary\n"
+                f"user_id: {scope['user_id']}\n"
+                f"brand_id: {scope['brand_id']}\n"
+                f"project_id: {scope['project_id']}\n"
+                f"thread_id: {scope['thread_id']}\n"
+                f"topic: landing_page\n\n"
+                f"{summary}"
+            ),
+            metadata={
+                "memory_domain": "conversation_memory",
+                "memory_type": "conversation_summary",
+                "user_id": str(scope["user_id"]),
+                "brand_id": str(scope["brand_id"]),
+                "project_id": str(scope["project_id"]),
+                "thread_id": str(scope["thread_id"]),
+                "topic": "landing_page",
+            },
+        )
+    except Exception as e:
+        print(f"[auto_memory_node] pgvector 写入失败：{e}")
+
+    return {}
+
+
 builder = StateGraph(SupervisorState)
 
 # 添加节点
@@ -404,6 +671,8 @@ builder.add_node("memory_manager", memory_manager)
 builder.add_node("knowledge_manager", knowledge_manager)
 builder.add_node("creator", creator)
 builder.add_node("code_generator", code_generator)
+builder.add_node("page_save_guard", page_save_guard)
+builder.add_node("auto_memory", auto_memory_node)
 
 # 添加边
 builder.add_edge(START, "supervisor")                                 # 入口 → 主管
@@ -420,12 +689,14 @@ builder.add_conditional_edges("human_review", route_after_review, {   # 审核 �
     "code_generator": "code_generator",
     END: END,
 })
-# 所有子 Agent 完成后 → 结束（结果已在 messages 里）
+# 所有子 Agent 完成后 → 结束（code_generator 先经过保存兜底）
 builder.add_edge("researcher", END)
 builder.add_edge("memory_manager", END)
 builder.add_edge("knowledge_manager", END)
 builder.add_edge("creator", END)
-builder.add_edge("code_generator", END)
+builder.add_edge("code_generator", "page_save_guard")
+builder.add_edge("page_save_guard", "auto_memory")
+builder.add_edge("auto_memory", END)
 
 # 顶层暴露 graph 变量，langgraph.json 通过 "./agent_graph.py:graph" 找到它
 # checkpointer 和 store 由框架根据 langgraph.json 自动注入

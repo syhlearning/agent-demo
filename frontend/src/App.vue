@@ -6,7 +6,7 @@
     <header>
       <div class="status-dot" />
       <h1>Agent</h1>
-      <span class="thread-id">{{ userId }} · {{ threadId }}</span>
+      <span class="thread-id">{{ userId }} · {{ brandId }} · {{ projectId }}</span>
       <button class="logout-btn" @click="logout">退出</button>
     </header>
 
@@ -14,6 +14,17 @@
       <!-- 左侧会话列表 -->
       <aside class="sidebar">
         <button class="new-chat-btn" @click="newConversation">+ 新对话</button>
+        <div class="scope-panel">
+          <label>
+            <span>品牌</span>
+            <input v-model="brandId" @change="saveScope" />
+          </label>
+          <label>
+            <span>项目</span>
+            <input v-model="projectId" @change="saveScope" />
+          </label>
+          <button class="new-project-btn" @click="newProject">新页面项目</button>
+        </div>
         <div class="conversation-list">
           <div
             v-for="conv in conversations"
@@ -103,6 +114,7 @@
               <div class="file-chip">
                 <span class="chip-icon">📄</span>
                 <span class="chip-name">{{ pendingFile.docId }}</span>
+                <span class="chip-type">{{ pendingFile.docType }}</span>
                 <button class="chip-remove" @click="pendingFile = null">✕</button>
               </div>
             </div>
@@ -188,6 +200,8 @@ function logout() {
   sessionStorage.removeItem("userId");
   sessionStorage.removeItem("threadId");
   sessionStorage.removeItem("threadCreated");
+  sessionStorage.removeItem("brandId");
+  sessionStorage.removeItem("projectId");
   userId.value = "";
   messages.value = [];
   conversations.value = [];
@@ -203,12 +217,46 @@ function getOrCreateThreadId() {
 }
 const threadId = ref(getOrCreateThreadId());
 
+function getOrCreateProjectId() {
+  const existing = sessionStorage.getItem("projectId");
+  if (existing) return existing;
+  const id = crypto.randomUUID();
+  sessionStorage.setItem("projectId", id);
+  return id;
+}
+
+const brandId = ref(sessionStorage.getItem("brandId") ?? "default-brand");
+const projectId = ref(getOrCreateProjectId());
+
+function saveScope() {
+  const cleanBrand = brandId.value.trim() || "default-brand";
+  const cleanProject = projectId.value.trim() || getOrCreateProjectId();
+  brandId.value = cleanBrand;
+  projectId.value = cleanProject;
+  sessionStorage.setItem("brandId", cleanBrand);
+  sessionStorage.setItem("projectId", cleanProject);
+}
+
+function currentConfig() {
+  saveScope();
+  return {
+    user_id: userId.value,
+    thread_id: threadId.value,
+    brand_id: brandId.value,
+    project_id: projectId.value,
+  };
+}
+
+function withScope(content: string) {
+  return `当前品牌ID：${brandId.value}\n当前项目ID：${projectId.value}\n\n${content}`;
+}
+
 const messages = ref<Message[]>([]);
 const inputText = ref("");
 const loading = ref(false);
 const messagesEl = ref<HTMLElement | null>(null);
 const inputEl = ref<HTMLInputElement | null>(null);
-const pendingFile = ref<{ file: File; docId: string } | null>(null);
+const pendingFile = ref<{ file: File; docId: string; docType: string } | null>(null);
 const toast = ref({ visible: false, message: "", type: "success" });
 let toastTimer: ReturnType<typeof setTimeout>;
 
@@ -238,6 +286,8 @@ function addConversation(text: string) {
   if (conversations.value.some((c) => c.threadId === threadId.value)) return;
   conversations.value.unshift({
     threadId: threadId.value,
+    brandId: brandId.value,
+    projectId: projectId.value,
     title: text.slice(0, 20) || "新对话",
     createdAt: Date.now(),
   });
@@ -253,8 +303,18 @@ function newConversation() {
   previewUrl.value = null;
 }
 
+function newProject() {
+  projectId.value = crypto.randomUUID();
+  saveScope();
+  newConversation();
+}
+
 async function switchConversation(tid: string) {
   if (tid === threadId.value) return;
+  const conv = conversations.value.find((item) => item.threadId === tid);
+  if (conv?.brandId) brandId.value = conv.brandId;
+  if (conv?.projectId) projectId.value = conv.projectId;
+  saveScope();
   sessionStorage.setItem("threadId", tid);
   sessionStorage.setItem("threadCreated", "1"); // 已有的对话肯定已创建
   threadId.value = tid;
@@ -305,9 +365,50 @@ onMounted(() => {
 });
 
 // 解析 AI 消息中的 [PREVIEW:...] 标记
+function extractPreviewPath(text: string): string | null {
+  const marker = text.match(/\[PREVIEW:(\/projects\/[^\]\s]+)\]/);
+  if (marker) return marker[1];
+
+  const jsonUrl = text.match(/"preview_url"\s*:\s*"(\/projects\/[^"]+)"/);
+  if (jsonUrl) return jsonUrl[1];
+
+  const directUrl = text.match(/(\/projects\/[^\s)"'<>]+index\.html)/);
+  return directUrl ? directUrl[1] : null;
+}
+
 function extractPreviewUrl(text: string): string | null {
-  const match = text.match(/\[PREVIEW:(\/projects\/[^\]]+)\]/);
-  return match ? match[1] + "?t=" + Date.now() : null;
+  const path = extractPreviewPath(text);
+  return path ? path + "?t=" + Date.now() : null;
+}
+
+function previewPath(url: string): string {
+  return url.split("?")[0];
+}
+
+function ensurePreviewLink(msg: Message, url: string) {
+  const path = previewPath(url);
+  if (msg.content.includes(`[PREVIEW:${path}]`)) return;
+  const suffix = `\n\n[PREVIEW:${path}]`;
+  msg.content = msg.content ? msg.content + suffix : suffix.trim();
+}
+
+function applyPreviewFromText(msg: Message, text: string): string | null {
+  const pUrl = extractPreviewUrl(text);
+  if (!pUrl) return null;
+  previewUrl.value = pUrl;
+  ensurePreviewLink(msg, pUrl);
+  return pUrl;
+}
+
+function applyPreviewFromMessages(msg: Message, payload: any): string | null {
+  const msgs = payload?.messages;
+  if (!Array.isArray(msgs)) return null;
+  let found: string | null = null;
+  for (const item of msgs) {
+    if (typeof item?.content !== "string") continue;
+    found = applyPreviewFromText(msg, item.content) || found;
+  }
+  return found;
 }
 
 function showToast(msg: string, type: "success" | "error" = "success") {
@@ -318,7 +419,7 @@ function showToast(msg: string, type: "success" | "error" = "success") {
   }, 3000);
 }
 
-function onFileSelected(payload: { file: File; docId: string }) {
+function onFileSelected(payload: { file: File; docId: string; docType: string }) {
   pendingFile.value = payload;
 }
 
@@ -332,8 +433,11 @@ function escapeHtml(text: string): string {
 }
 
 function renderMarkdown(text: string): string {
-  // 移除 [PREVIEW:...] 标记再渲染
-  const cleaned = text.replace(/\[PREVIEW:\/projects\/[^\]]+\]/g, "");
+  // 将 [PREVIEW:...] 标记渲染成可点击链接
+  const cleaned = text.replace(
+    /\[PREVIEW:(\/projects\/[^\]]+)\]/g,
+    (_match, path) => `[预览链接](${path}?t=${Date.now()})`
+  );
   return marked.parse(cleaned) as string;
 }
 
@@ -376,6 +480,10 @@ async function send() {
       const formData = new FormData();
       formData.append("file", file.file);
       formData.append("doc_id", file.docId);
+      formData.append("doc_type", file.docType);
+      formData.append("user_id", userId.value);
+      formData.append("brand_id", brandId.value);
+      formData.append("project_id", projectId.value);
       const uploadRes = await fetch("/upload", {
         method: "POST",
         body: formData,
@@ -408,8 +516,8 @@ async function send() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           assistant_id: "agent",
-          input: { messages: [{ role: "user", content: chatMessage }] },
-          config: { configurable: { user_id: userId.value } },
+          input: { messages: [{ role: "user", content: withScope(chatMessage) }] },
+          config: { configurable: currentConfig() },
           stream_mode: ["messages", "values"],
         }),
       }
@@ -518,11 +626,10 @@ async function send() {
                 !lastMsg.content.trim().startsWith("{") // 排除 structured output JSON
               ) {
                 aiMsg.content = lastMsg.content;
-                const pUrl = extractPreviewUrl(lastMsg.content);
-                if (pUrl) previewUrl.value = pUrl;
                 scrollBottom();
               }
             }
+            applyPreviewFromMessages(aiMsg, payload);
           } catch {
             // 解析失败忽略
           }
@@ -554,11 +661,14 @@ async function send() {
           ) {
             // 跳过 JSON 格式输出（supervisor 路由决策的 structured output）
             const trimmed = msg.content.trim();
-            if (trimmed.startsWith("{") || trimmed.startsWith("[")) continue;
+            if (
+              trimmed.startsWith("{") ||
+              (trimmed.startsWith("[") && !trimmed.startsWith("[PREVIEW:"))
+            )
+              continue;
             aiMsg.content = msg.content;
             // 检测预览标记
-            const pUrl = extractPreviewUrl(msg.content);
-            if (pUrl) previewUrl.value = pUrl;
+            applyPreviewFromText(aiMsg, msg.content);
             scrollBottom();
           }
         } catch {
@@ -594,7 +704,7 @@ async function handleReview(
       body: JSON.stringify({
         assistant_id: "agent",
         command: { resume: decision },
-        config: { configurable: { user_id: userId.value } },
+        config: { configurable: currentConfig() },
         stream_mode: ["messages", "values"],
       }),
     });
@@ -632,11 +742,10 @@ async function handleReview(
                 !lastMsg.content.trim().startsWith("{")
               ) {
                 aiMsg.content = lastMsg.content;
-                const pUrl = extractPreviewUrl(lastMsg.content);
-                if (pUrl) previewUrl.value = pUrl;
                 scrollBottom();
               }
             }
+            applyPreviewFromMessages(aiMsg, payload);
           } catch {
             // ignore
           }
@@ -654,10 +763,13 @@ async function handleReview(
           ) {
             // 跳过 JSON 格式输出（supervisor 路由决策的 structured output）
             const trimmed = msg.content.trim();
-            if (trimmed.startsWith("{") || trimmed.startsWith("[")) continue;
+            if (
+              trimmed.startsWith("{") ||
+              (trimmed.startsWith("[") && !trimmed.startsWith("[PREVIEW:"))
+            )
+              continue;
             aiMsg.content = msg.content;
-            const pUrl = extractPreviewUrl(msg.content);
-            if (pUrl) previewUrl.value = pUrl;
+            applyPreviewFromText(aiMsg, msg.content);
             scrollBottom();
           }
         } catch {
@@ -774,6 +886,49 @@ header h1 {
   transition: border-color 0.15s, color 0.15s;
 }
 .new-chat-btn:hover {
+  border-color: #6e5fdb;
+  color: #6e5fdb;
+}
+.scope-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 12px 12px;
+  border-bottom: 1px solid #171717;
+}
+.scope-panel label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 10px;
+  color: #444;
+}
+.scope-panel input {
+  width: 100%;
+  background: #0d0d0d;
+  border: 1px solid #222;
+  border-radius: 5px;
+  color: #aaa;
+  font-family: inherit;
+  font-size: 11px;
+  padding: 6px 8px;
+  outline: none;
+}
+.scope-panel input:focus {
+  border-color: #6e5fdb;
+}
+.new-project-btn {
+  background: transparent;
+  border: 1px solid #252525;
+  color: #555;
+  padding: 6px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+  transition: border-color 0.15s, color 0.15s;
+}
+.new-project-btn:hover {
   border-color: #6e5fdb;
   color: #6e5fdb;
 }
@@ -1064,6 +1219,13 @@ header h1 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.chip-type {
+  color: #6e5fdb;
+  font-size: 10px;
+  border: 1px solid #2a2550;
+  border-radius: 4px;
+  padding: 1px 5px;
 }
 .chip-remove {
   background: none;

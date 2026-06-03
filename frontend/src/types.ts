@@ -14,6 +14,8 @@ export interface Message {
 
 export interface Conversation {
   threadId: string
+  brandId?: string
+  projectId?: string
   title: string
   createdAt: number
 }
