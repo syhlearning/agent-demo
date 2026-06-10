@@ -1,4 +1,9 @@
 services:
   langgraph-api:
     volumes:
+      - ./agent_graph.py:/deps/agent/agent_graph.py
+      - ./tools:/deps/agent/tools
+      - ./db:/deps/agent/db
+      - ./api:/deps/agent/api
+      - ./brand_data:/deps/agent/brand_data
       - ./projects:/deps/agent/projects

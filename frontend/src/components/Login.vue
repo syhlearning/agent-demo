@@ -25,7 +25,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
 
-const emit = defineEmits<{ login: [userId: string] }>();
+const emit = defineEmits<{ login: [displayName: string] }>();
 
 const username = ref("");
 const inputEl = ref<HTMLInputElement | null>(null);

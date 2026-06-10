@@ -4,6 +4,7 @@ import path from "path";
 
 export default defineConfig({
   plugins: [vue()],
+  base: "/static/",
   build: {
     // 构建输出到 static/，FastAPI 直接提供静态文件
     outDir: path.resolve(__dirname, "../static"),

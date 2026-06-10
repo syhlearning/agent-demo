@@ -308,17 +308,18 @@ code_generator = create_agent(
         "工作流程：\n"
         "1. 任何生成或修改落地页任务，必须先读取记忆和规范：get_project_memory、get_thread_summary、search_conversation_memory、get_brand_profile；如果规范不足，再用 search_brand_skills 检索相关资料。\n"
         "2. 记忆只作为上下文参考，优先级低于用户本轮明确要求、品牌 skill、落地页规则和当前 index.html；不要保存或放大历史里的失败工具调用、模型幻觉。\n"
-        "3. 如果用户要求修改已有页面，必须先用 list_project_files 查看当前项目文件，再用 read_project_file 读取相关文件，尤其是 index.html。\n"
+        "3. 如果用户询问当前页面/已有页面/之前页面的预览链接、页面链接、URL、打开地址，必须先调用 validate_landing_page，file_path 传 index.html；如果返回 preview_url，直接把该链接作为答案，不要因为记忆摘要里没写链接就说找不到。\n"
+        "4. 如果用户要求修改已有页面，必须先用 list_project_files 查看当前项目文件，再用 read_project_file 读取相关文件，尤其是 index.html。\n"
         "   调用 read_project_file、write_project_file、validate_landing_page 时，file_path 只能传当前项目内的相对路径，例如 index.html，不要传 /projects/... 预览路径或绝对路径。\n"
-        "4. 根据用户需求、品牌 skill、产品资料、当前页面和项目记忆，生成或修改完整的 HTML 页面（CSS 和 JS 内联在 HTML 中）。\n"
-        "5. 必须使用 write_project_file 工具把最终页面保存为 index.html。\n"
-        "6. 保存后必须调用 validate_landing_page 校验 index.html；如果返回 issues，必须修复后再次 write_project_file 保存。\n"
-        "7. 校验通过后，必须调用 update_project_memory 更新当前项目的稳定摘要和关键决策；再调用 save_conversation_summary 保存本轮修改摘要到长期向量记忆。\n"
-        "8. 禁止只把代码输出给用户手动保存；禁止声称自己无法保存、无法修改文件，除非 write_project_file 工具明确返回失败。\n"
-        "9. 修改已有页面时，不要创建 index-tail.html、patch.js、sand-patch.js 等补丁文件来代替修改；必须把合并后的完整结果写回 index.html。\n"
-        "10. 代码应该是完整的、可直接在浏览器打开的 HTML 文件。\n"
-        "11. 设计必须服从品牌 skill：品牌色、字体/排版、语气、必需模块、禁用项的优先级高于通用审美建议。\n"
-        "12. 保存、校验和记忆更新后，在回复的最后一行必须包含预览标记，格式为：\n"
+        "5. 根据用户需求、品牌 skill、产品资料、当前页面和项目记忆，生成或修改完整的 HTML 页面（CSS 和 JS 内联在 HTML 中）。\n"
+        "6. 必须使用 write_project_file 工具把最终页面保存为 index.html。\n"
+        "7. 保存后必须调用 validate_landing_page 校验 index.html；如果返回 issues，必须修复后再次 write_project_file 保存。\n"
+        "8. 校验通过后，必须调用 update_project_memory 更新当前项目的稳定摘要和关键决策；再调用 save_conversation_summary 保存本轮修改摘要到长期向量记忆。\n"
+        "9. 禁止只把代码输出给用户手动保存；禁止声称自己无法保存、无法修改文件，除非 write_project_file 工具明确返回失败。\n"
+        "10. 修改已有页面时，不要创建 index-tail.html、patch.js、sand-patch.js 等补丁文件来代替修改；必须把合并后的完整结果写回 index.html。\n"
+        "11. 代码应该是完整的、可直接在浏览器打开的 HTML 文件。\n"
+        "12. 设计必须服从品牌 skill：品牌色、字体/排版、语气、必需模块、禁用项的优先级高于通用审美建议。\n"
+        "13. 保存、校验和记忆更新后，在回复的最后一行必须包含预览标记，格式为：\n"
         "   [PREVIEW:/projects/{user_id}/{brand_id}/{project_id}/index.html]\n"
         "   其中 user_id、brand_id、project_id 从 write_project_file 的返回值中提取；如果返回的是旧路径，也必须原样使用返回值里的路径。\n\n"
         "最终回复只需要简短说明已保存和预览链接，不要再输出完整 HTML 代码或代码块。\n\n"
@@ -364,7 +365,9 @@ SUPERVISOR_PROMPT_TEMPLATE = (
     "- code_generator：网页代码专家，负责生成、修改、读取、保存 HTML/CSS/JS 落地页和网页代码，拥有读写项目文件的工具\n\n"
     "根据用户的消息，决定交给哪个专家处理。\n"
     "如果是普通对话（打招呼、闲聊、不需要工具的问题），选择 FINISH 并直接回复用户。\n"
+    "如果用户询问天气、气温、降雨、空气质量、新闻、搜索、最新信息，必须选择 researcher；即使消息前面带有当前项目ID/品牌ID，也不要因此选择 code_generator。\n"
     "如果用户要求创建、修改、更新、修复、保存、预览网页/页面/落地页/HTML/CSS/JS/项目文件，必须选择 code_generator，不能选择 FINISH，也不要直接输出代码让用户手动保存。\n"
+    "如果用户询问页面链接、预览链接、页面 URL、打开地址、之前生成的页面在哪里，也必须选择 code_generator，让它用当前项目 scope 计算或校验预览链接。\n"
     "如果用户的请求涉及多个领域，选择最主要的那个专家。\n"
     "如果是新对话的第一条消息，且需要个性化回复，先交给 memory_manager 读取用户信息。"
 )
@@ -373,8 +376,56 @@ SUPERVISOR_PROMPT_TEMPLATE = (
 supervisor_model = supervisor_llm.with_structured_output(SupervisorDecision)
 
 
+WEATHER_INTENT_RE = re.compile(
+    r"(天气|气温|温度|下雨|降雨|空气质量|AQI|湿度|风力|风速|weather|forecast)",
+    re.IGNORECASE,
+)
+SEARCH_INTENT_RE = re.compile(
+    r"(新闻|搜索|查一下|帮我查|最新|资料|联网|web\s*search)",
+    re.IGNORECASE,
+)
+PAGE_OR_CODE_INTENT_RE = re.compile(
+    r"(网页|页面|落地页|HTML|CSS|JavaScript|JS|预览链接|页面链接|页面\s*URL|URL|打开地址|index\.html|项目文件|生成.*页|修改.*页|更新.*页|修复.*页|保存.*页)",
+    re.IGNORECASE,
+)
+
+
+def _latest_human_content_for_route(state) -> str:
+    for message in reversed(state.get("messages", [])):
+        if _message_type(message) in {"human", "user"}:
+            return _message_content(message)
+    return ""
+
+
+def _strip_scope_context(text: str) -> str:
+    text = text.strip()
+    if text.startswith("当前公司ID："):
+        parts = re.split(r"\n\s*\n", text, maxsplit=1)
+        if len(parts) == 2:
+            return parts[1].strip()
+    return text
+
+
+def _rule_based_supervisor_route(state) -> str:
+    user_text = _strip_scope_context(_latest_human_content_for_route(state))
+    if not user_text:
+        return ""
+
+    has_page_or_code_intent = bool(PAGE_OR_CODE_INTENT_RE.search(user_text))
+    has_weather_or_search_intent = bool(
+        WEATHER_INTENT_RE.search(user_text) or SEARCH_INTENT_RE.search(user_text)
+    )
+    if has_weather_or_search_intent and not has_page_or_code_intent:
+        return "researcher"
+    return ""
+
+
 def supervisor_node(state):
     """主管节点：判断用户意图，决定路由到哪个子 Agent 或直接回复。"""
+    forced_next = _rule_based_supervisor_route(state)
+    if forced_next:
+        return {"next": forced_next}
+
     sys_msg = SystemMessage(content=SUPERVISOR_PROMPT_TEMPLATE.format(time=_now_str()))
     decision = supervisor_model.invoke([sys_msg] + state["messages"])
     # 此时不是aimessage了，而是经过 structured output 解析后的 SupervisorDecision 对象，
@@ -463,7 +514,7 @@ def _message_type(message) -> str:
     if msg_type:
         return str(msg_type)
     if isinstance(message, dict):
-        return str(message.get("type") or "")
+        return str(message.get("type") or message.get("role") or "")
     return ""
 
 
@@ -572,7 +623,8 @@ def page_save_guard(state: SupervisorState, *, config: RunnableConfig) -> dict:
 def auto_memory_node(state: SupervisorState, config: RunnableConfig, store: BaseStore) -> dict:
     """code_generator / page_save_guard 完成后自动更新项目记忆，不依赖 LLM 主动调用工具。"""
     # 本轮没有成功生成页面则跳过
-    if not _latest_preview_path(state):
+    preview_url = _latest_preview_path(state)
+    if not preview_url:
         return {}
 
     configurable = (config or {}).get("configurable", {})
@@ -606,6 +658,7 @@ def auto_memory_node(state: SupervisorState, config: RunnableConfig, store: Base
                     "summary": summary,
                     "decisions": [],
                     "current_file": "index.html",
+                    "preview_url": preview_url,
                     "updated_at": now,
                     "user_id": str(scope["user_id"]),
                     "brand_id": str(scope["brand_id"]),
@@ -618,6 +671,7 @@ def auto_memory_node(state: SupervisorState, config: RunnableConfig, store: Base
                 {
                     "summary": summary,
                     "topic": "landing_page",
+                    "preview_url": preview_url,
                     "updated_at": now,
                     "thread_id": str(scope["thread_id"]),
                 },
@@ -642,6 +696,7 @@ def auto_memory_node(state: SupervisorState, config: RunnableConfig, store: Base
                 f"brand_id: {scope['brand_id']}\n"
                 f"project_id: {scope['project_id']}\n"
                 f"thread_id: {scope['thread_id']}\n"
+                f"preview_url: {preview_url}\n"
                 f"topic: landing_page\n\n"
                 f"{summary}"
             ),
@@ -652,6 +707,7 @@ def auto_memory_node(state: SupervisorState, config: RunnableConfig, store: Base
                 "brand_id": str(scope["brand_id"]),
                 "project_id": str(scope["project_id"]),
                 "thread_id": str(scope["thread_id"]),
+                "preview_url": preview_url,
                 "topic": "landing_page",
             },
         )

@@ -5,8 +5,9 @@
   <div v-else class="layout">
     <header>
       <div class="status-dot" />
-      <h1>Agent</h1>
-      <span class="thread-id">{{ userId }} · {{ brandId }} · {{ projectId }}</span>
+      <div class="company-logo">S</div>
+      <h1>{{ ORG_NAME }}</h1>
+      <span class="thread-id">{{ userLabel }} · {{ userId }} · {{ projectId }}</span>
       <button class="logout-btn" @click="logout">退出</button>
     </header>
 
@@ -15,10 +16,13 @@
       <aside class="sidebar">
         <button class="new-chat-btn" @click="newConversation">+ 新对话</button>
         <div class="scope-panel">
-          <label>
-            <span>品牌</span>
-            <input v-model="brandId" @change="saveScope" />
-          </label>
+          <div class="company-card">
+            <div class="company-card-logo">S</div>
+            <div>
+              <div class="company-card-name">{{ ORG_NAME }}</div>
+              <div class="company-card-id">{{ ORG_ID }}</div>
+            </div>
+          </div>
           <label>
             <span>项目</span>
             <input v-model="projectId" @change="saveScope" />
@@ -181,23 +185,107 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onMounted } from "vue";
+import { ref, computed, nextTick, onMounted } from "vue";
 import { marked } from "marked";
 import type { Message, ToolCall, Conversation } from "./types";
 import FileUpload from "./components/FileUpload.vue";
 import Login from "./components/Login.vue";
 
 // 登录状态
-const userId = ref(sessionStorage.getItem("userId") ?? "");
+type UserIdentity = {
+  userId: string;
+  displayName: string;
+};
+
+const ORG_ID = "starlinke";
+const ORG_NAME = "starlinke";
+const DEFAULT_BRAND_ID = "default-brand";
+const SAFE_SEGMENT_RE = /^[0-9A-Za-z._-]+$/;
+
+function stableHash(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let value = 0x811c9dc5;
+  for (const byte of bytes) {
+    value ^= byte;
+    value = Math.imul(value, 0x01000193) >>> 0;
+  }
+  return value.toString(16).padStart(8, "0");
+}
+
+function segmentPrefix(defaultValue: string): string {
+  let clean = (defaultValue || "item")
+    .replace(/[^0-9A-Za-z]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
+  if (clean.startsWith("default-")) clean = clean.slice("default-".length);
+  return clean || "item";
+}
+
+function safeIdSegment(value: string, defaultValue = "user"): string {
+  const raw = (value || "").trim();
+  if (!raw) return defaultValue;
+
+  const text = raw.replace(/^[.-]+|[.-]+$/g, "");
+  if (text && SAFE_SEGMENT_RE.test(text)) return text;
+
+  return `${segmentPrefix(defaultValue)}-${stableHash(raw)}`;
+}
+
+function conversationStorageKey(id: string) {
+  return `conversations:${id}`;
+}
+
+function migrateConversationStorage(oldId: string, newId: string) {
+  if (!oldId || oldId === newId) return;
+  const oldKey = conversationStorageKey(oldId);
+  const newKey = conversationStorageKey(newId);
+  const oldValue = localStorage.getItem(oldKey);
+  if (oldValue && !localStorage.getItem(newKey)) {
+    localStorage.setItem(newKey, oldValue);
+  }
+}
+
+function identityFromName(name: string): UserIdentity {
+  const displayName = name.trim();
+  return {
+    userId: safeIdSegment(displayName, "default-user"),
+    displayName,
+  };
+}
+
+function loadStoredIdentity(): UserIdentity {
+  const storedId = sessionStorage.getItem("userId") ?? "";
+  const storedDisplayName = sessionStorage.getItem("userDisplayName") ?? "";
+  if (!storedId) return { userId: "", displayName: "" };
+
+  const identity = storedDisplayName
+    ? { userId: safeIdSegment(storedId, "default-user"), displayName: storedDisplayName }
+    : identityFromName(storedId);
+
+  migrateConversationStorage(storedId, identity.userId);
+  sessionStorage.setItem("userId", identity.userId);
+  sessionStorage.setItem("userDisplayName", identity.displayName);
+  return identity;
+}
+
+const initialIdentity = loadStoredIdentity();
+const userId = ref(initialIdentity.userId);
+const userDisplayName = ref(initialIdentity.displayName);
+const userLabel = computed(() => userDisplayName.value || userId.value);
 
 function onLogin(name: string) {
-  sessionStorage.setItem("userId", name);
-  userId.value = name;
+  const identity = identityFromName(name);
+  migrateConversationStorage(name, identity.userId);
+  sessionStorage.setItem("userId", identity.userId);
+  sessionStorage.setItem("userDisplayName", identity.displayName);
+  userId.value = identity.userId;
+  userDisplayName.value = identity.displayName;
   loadConversations();
 }
 
 function logout() {
   sessionStorage.removeItem("userId");
+  sessionStorage.removeItem("userDisplayName");
   sessionStorage.removeItem("threadId");
   sessionStorage.removeItem("threadCreated");
   sessionStorage.removeItem("brandId");
@@ -225,11 +313,11 @@ function getOrCreateProjectId() {
   return id;
 }
 
-const brandId = ref(sessionStorage.getItem("brandId") ?? "default-brand");
+const brandId = ref(DEFAULT_BRAND_ID);
 const projectId = ref(getOrCreateProjectId());
 
 function saveScope() {
-  const cleanBrand = brandId.value.trim() || "default-brand";
+  const cleanBrand = DEFAULT_BRAND_ID;
   const cleanProject = projectId.value.trim() || getOrCreateProjectId();
   brandId.value = cleanBrand;
   projectId.value = cleanProject;
@@ -240,7 +328,10 @@ function saveScope() {
 function currentConfig() {
   saveScope();
   return {
+    org_id: ORG_ID,
+    org_name: ORG_NAME,
     user_id: userId.value,
+    user_display_name: userDisplayName.value,
     thread_id: threadId.value,
     brand_id: brandId.value,
     project_id: projectId.value,
@@ -248,7 +339,7 @@ function currentConfig() {
 }
 
 function withScope(content: string) {
-  return `当前品牌ID：${brandId.value}\n当前项目ID：${projectId.value}\n\n${content}`;
+  return `当前公司ID：${ORG_ID}\n当前公司名称：${ORG_NAME}\n当前用户ID：${userId.value}\n当前用户显示名：${userLabel.value}\n当前品牌ID：${brandId.value}\n当前项目ID：${projectId.value}\n\n${content}`;
 }
 
 const messages = ref<Message[]>([]);
@@ -266,7 +357,7 @@ const previewMode = ref<"pc" | "mobile">("pc");
 
 // 会话列表
 const conversations = ref<Conversation[]>([]);
-const CONV_STORAGE_KEY = () => `conversations:${userId.value}`;
+const CONV_STORAGE_KEY = () => conversationStorageKey(userId.value);
 
 function loadConversations() {
   try {
@@ -312,7 +403,7 @@ function newProject() {
 async function switchConversation(tid: string) {
   if (tid === threadId.value) return;
   const conv = conversations.value.find((item) => item.threadId === tid);
-  if (conv?.brandId) brandId.value = conv.brandId;
+  brandId.value = DEFAULT_BRAND_ID;
   if (conv?.projectId) projectId.value = conv.projectId;
   saveScope();
   sessionStorage.setItem("threadId", tid);
@@ -481,6 +572,7 @@ async function send() {
       formData.append("file", file.file);
       formData.append("doc_id", file.docId);
       formData.append("doc_type", file.docType);
+      formData.append("org_id", ORG_ID);
       formData.append("user_id", userId.value);
       formData.append("brand_id", brandId.value);
       formData.append("project_id", projectId.value);
@@ -836,6 +928,21 @@ header h1 {
   color: #fff;
   letter-spacing: 0.05em;
 }
+.company-logo,
+.company-card-logo {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border: 1px solid #384152;
+  border-radius: 6px;
+  background: #121820;
+  color: #c7d2fe;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
 .thread-id {
   margin-left: auto;
   font-size: 11px;
@@ -895,6 +1002,31 @@ header h1 {
   gap: 8px;
   padding: 0 12px 12px;
   border-bottom: 1px solid #171717;
+}
+.company-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #1f2937;
+  border-radius: 6px;
+  background: #0d1117;
+}
+.company-card-logo {
+  width: 28px;
+  height: 28px;
+  border-color: #46556f;
+  font-size: 14px;
+}
+.company-card-name {
+  color: #e5e7eb;
+  font-size: 12px;
+  font-weight: 700;
+}
+.company-card-id {
+  margin-top: 2px;
+  color: #64748b;
+  font-size: 10px;
 }
 .scope-panel label {
   display: flex;

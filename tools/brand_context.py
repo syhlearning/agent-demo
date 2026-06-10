@@ -13,6 +13,7 @@ from langchain_core.tools import tool
 BASE_DIR = Path(__file__).resolve().parents[1]
 PROJECTS_ROOT = BASE_DIR / "projects"
 BRAND_DATA_ROOT = BASE_DIR / "brand_data"
+DEFAULT_ORG_ID = "starlinke"
 
 BRAND_DOC_TYPES = {
     "brand_skill",
@@ -23,12 +24,36 @@ BRAND_DOC_TYPES = {
 }
 
 
+SAFE_SEGMENT_RE = re.compile(r"^[0-9A-Za-z._-]+$")
+FNV_OFFSET_BASIS = 2166136261
+FNV_PRIME = 16777619
+
+
+def _stable_hash(text: str) -> str:
+    value = FNV_OFFSET_BASIS
+    for byte in text.encode("utf-8"):
+        value ^= byte
+        value = (value * FNV_PRIME) & 0xFFFFFFFF
+    return f"{value:08x}"
+
+
+def _segment_prefix(default: str) -> str:
+    clean = re.sub(r"[^0-9A-Za-z]+", "-", default or "item").strip("-").lower()
+    if clean.startswith("default-"):
+        clean = clean.removeprefix("default-")
+    return clean or "item"
+
+
 def _safe_segment(value: str | None, default: str) -> str:
-    text = (value or "").strip()
-    if not text:
-        text = default
-    text = re.sub(r"[^0-9A-Za-z._-]+", "-", text).strip(".-")
-    return text or default
+    raw = (value or "").strip()
+    if not raw:
+        return default
+
+    text = raw.strip(".-")
+    if text and SAFE_SEGMENT_RE.fullmatch(text):
+        return text
+
+    return f"{_segment_prefix(default)}-{_stable_hash(raw)}"
 
 
 def _now() -> str:
@@ -40,6 +65,7 @@ def get_runtime_config(runtime: ToolRuntime) -> dict[str, Any]:
 
 
 def get_project_scope(configurable: dict[str, Any]) -> dict[str, str | bool]:
+    org_id = _safe_segment(str(configurable.get("org_id") or DEFAULT_ORG_ID), DEFAULT_ORG_ID)
     user_id = _safe_segment(
         str(configurable.get("user_id") or configurable.get("thread_id") or "default-user"),
         "default-user",
@@ -49,6 +75,7 @@ def get_project_scope(configurable: dict[str, Any]) -> dict[str, str | bool]:
     brand_id = _safe_segment(str(configurable.get("brand_id") or "default-brand"), "default-brand")
     project_id = _safe_segment(str(configurable.get("project_id") or thread_id), "default-project")
     return {
+        "org_id": org_id,
         "user_id": user_id,
         "thread_id": thread_id,
         "brand_id": brand_id,
@@ -105,14 +132,14 @@ def _normalize_project_file_path(base: Path, file_path: str) -> str:
     return raw
 
 
-def brand_dir(user_id: str, brand_id: str) -> Path:
-    return BRAND_DATA_ROOT / _safe_segment(str(user_id), "default-user") / _safe_segment(brand_id, "default-brand")
+def brand_dir(org_id: str, brand_id: str) -> Path:
+    return BRAND_DATA_ROOT / _safe_segment(str(org_id), DEFAULT_ORG_ID) / _safe_segment(brand_id, "default-brand")
 
 
-def _doc_path(user_id: str, brand_id: str, doc_type: str, doc_id: str) -> Path:
+def _doc_path(org_id: str, brand_id: str, doc_type: str, doc_id: str) -> Path:
     clean_type = doc_type if doc_type in BRAND_DOC_TYPES else "knowledge"
     clean_id = _safe_segment(doc_id, "document")
-    return brand_dir(user_id, brand_id) / "documents" / clean_type / f"{clean_id}.json"
+    return brand_dir(org_id, brand_id) / "documents" / clean_type / f"{clean_id}.json"
 
 
 def _read_json(path: Path, fallback: Any) -> Any:
@@ -124,12 +151,12 @@ def _read_json(path: Path, fallback: Any) -> Any:
         return fallback
 
 
-def _profile_path(user_id: str, brand_id: str) -> Path:
-    return brand_dir(user_id, brand_id) / "profile.json"
+def _profile_path(org_id: str, brand_id: str) -> Path:
+    return brand_dir(org_id, brand_id) / "profile.json"
 
 
-def _iter_brand_docs(user_id: str, brand_id: str, doc_types: set[str] | None = None) -> list[dict[str, Any]]:
-    root = brand_dir(user_id, brand_id) / "documents"
+def _iter_brand_docs(org_id: str, brand_id: str, doc_types: set[str] | None = None) -> list[dict[str, Any]]:
+    root = brand_dir(org_id, brand_id) / "documents"
     if not root.exists():
         return []
 
@@ -168,14 +195,14 @@ def _extract_profile_fields(docs: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def rebuild_brand_profile(user_id: str, brand_id: str) -> dict[str, Any]:
-    docs = _iter_brand_docs(user_id, brand_id)
+def rebuild_brand_profile(org_id: str, brand_id: str) -> dict[str, Any]:
+    docs = _iter_brand_docs(org_id, brand_id)
     hard_docs = [
         doc for doc in docs
         if doc.get("doc_type") in {"brand_skill", "landing_page_rule"}
     ]
     profile = {
-        "user_id": _safe_segment(str(user_id), "default-user"),
+        "org_id": _safe_segment(str(org_id), DEFAULT_ORG_ID),
         "brand_id": _safe_segment(brand_id, "default-brand"),
         "updated_at": _now(),
         "documents": [
@@ -189,14 +216,14 @@ def rebuild_brand_profile(user_id: str, brand_id: str) -> dict[str, Any]:
         ],
         "fields": _extract_profile_fields(hard_docs or docs),
     }
-    path = _profile_path(user_id, brand_id)
+    path = _profile_path(org_id, brand_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(profile, ensure_ascii=False, indent=2), encoding="utf-8")
     return profile
 
 
 def save_brand_document_text(
-    user_id: str,
+    org_id: str,
     brand_id: str,
     doc_id: str,
     doc_type: str,
@@ -204,10 +231,10 @@ def save_brand_document_text(
     source_filename: str = "",
 ) -> dict[str, Any]:
     clean_type = doc_type if doc_type in BRAND_DOC_TYPES else "knowledge"
-    path = _doc_path(user_id, brand_id, clean_type, doc_id)
+    path = _doc_path(org_id, brand_id, clean_type, doc_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     document = {
-        "user_id": _safe_segment(str(user_id), "default-user"),
+        "org_id": _safe_segment(str(org_id), DEFAULT_ORG_ID),
         "brand_id": _safe_segment(brand_id, "default-brand"),
         "doc_id": _safe_segment(doc_id, "document"),
         "doc_type": clean_type,
@@ -216,17 +243,18 @@ def save_brand_document_text(
         "text": text,
     }
     path.write_text(json.dumps(document, ensure_ascii=False, indent=2), encoding="utf-8")
-    profile = rebuild_brand_profile(user_id, brand_id)
+    profile = rebuild_brand_profile(org_id, brand_id)
     return {"document": document, "profile": profile}
 
 
-def get_brand_profile_text(user_id: str, brand_id: str, max_chars: int = 12000) -> str:
-    profile = _read_json(_profile_path(user_id, brand_id), {})
-    docs = _iter_brand_docs(user_id, brand_id, {"brand_skill", "landing_page_rule", "product_doc"})
+def get_brand_profile_text(org_id: str, brand_id: str, max_chars: int = 12000) -> str:
+    profile = _read_json(_profile_path(org_id, brand_id), {})
+    docs = _iter_brand_docs(org_id, brand_id, {"brand_skill", "landing_page_rule", "product_doc"})
     if not docs:
-        return f"未找到品牌 {brand_id} 的 skill 或资料。"
+        return f"未找到公司 {org_id} 下品牌 {brand_id} 的 skill 或资料。"
 
     parts = [
+        f"公司 ID：{_safe_segment(org_id, DEFAULT_ORG_ID)}",
         f"品牌 ID：{_safe_segment(brand_id, 'default-brand')}",
         "结构化规则：",
         json.dumps(profile.get("fields", {}), ensure_ascii=False, indent=2),
@@ -244,8 +272,8 @@ def get_brand_profile_text(user_id: str, brand_id: str, max_chars: int = 12000) 
     return "\n".join(parts)
 
 
-def search_brand_documents(user_id: str, brand_id: str, query: str, top_k: int = 5) -> list[dict[str, Any]]:
-    docs = _iter_brand_docs(user_id, brand_id)
+def search_brand_documents(org_id: str, brand_id: str, query: str, top_k: int = 5) -> list[dict[str, Any]]:
+    docs = _iter_brand_docs(org_id, brand_id)
     if not docs:
         return []
 
@@ -318,7 +346,7 @@ def validate_landing_page_file(configurable: dict[str, Any], file_path: str = "i
     if any(name in file_path for name in ("patch", "tail")):
         issues.append("当前文件像补丁文件；落地页最终结果必须写回 index.html。")
 
-    profile = _read_json(_profile_path(str(scope["user_id"]), str(scope["brand_id"])), {})
+    profile = _read_json(_profile_path(str(scope["org_id"]), str(scope["brand_id"])), {})
     colors = profile.get("fields", {}).get("colors", [])
     if colors and not any(color.lower() in html.lower() for color in colors):
         warnings.append("品牌 skill 中出现了品牌色，但页面 HTML 中未检测到这些色值。")
@@ -347,7 +375,7 @@ def get_brand_profile(runtime: ToolRuntime) -> str:
     """读取当前品牌的结构化规范和 skill 摘录。生成或修改落地页前必须先使用。"""
     config = get_runtime_config(runtime)
     scope = get_project_scope(config)
-    return get_brand_profile_text(str(scope["user_id"]), str(scope["brand_id"]))
+    return get_brand_profile_text(str(scope["org_id"]), str(scope["brand_id"]))
 
 
 @tool
@@ -355,7 +383,7 @@ def search_brand_skills(query: str, runtime: ToolRuntime, top_k: int = 5) -> str
     """在当前品牌上传的 skill、落地页规则、产品资料中检索相关片段。"""
     config = get_runtime_config(runtime)
     scope = get_project_scope(config)
-    results = search_brand_documents(str(scope["user_id"]), str(scope["brand_id"]), query, top_k=top_k)
+    results = search_brand_documents(str(scope["org_id"]), str(scope["brand_id"]), query, top_k=top_k)
     if not results:
         return "没有找到当前品牌的相关 skill 或资料。"
     return "\n---\n".join(

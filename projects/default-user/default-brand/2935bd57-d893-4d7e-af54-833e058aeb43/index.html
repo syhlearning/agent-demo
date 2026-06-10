@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>端午节快乐</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap');
+        
+        .root-container {
+            font-family: 'Noto Serif SC', serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            color: #333;
+            background-color: #f9f5e9;
+        }
+        
+        header {
+            text-align: center;
+            padding: 30px 0;
+            background-color: #d14334;
+            color: white;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        
+        .date {
+            font-size: 1.2rem;
+            font-weight: normal;
+        }
+        
+        .section {
+            background-color: white;
+            padding: 25px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        h2 {
+            color: #d14334;
+            border-bottom: 2px solid #d14334;
+            padding-bottom: 10px;
+            margin-top: 0;
+        }
+        
+        .activities {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: space-around;
+        }
+        
+        .activity {
+            flex: 1;
+            min-width: 250px;
+            background-color: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+        }
+        
+        .activity h3 {
+            color: #d14334;
+            margin-top: 0;
+        }
+        
+        footer {
+            text-align: center;
+            padding: 20px;
+            background-color: #d14334;
+            color: white;
+            border-radius: 8px;
+        }
+        
+        .blessing {
+            font-size: 1.5rem;
+            margin-bottom: 15px;
+        }
+        
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2rem;
+            }
+            
+            .activities {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="root-container">
+        <header>
+            <h1>端午节快乐</h1>
+            <p class="date">2026年6月19日 农历五月初五</p>
+        </header>
+        
+        <div class="section">
+            <h2>节日介绍</h2>
+            <p>端午节，又称端阳节、龙舟节、重午节等，是中国传统节日之一，起源于对自然天象的崇拜和古代祭祀活动，后演变为纪念战国时期楚国诗人屈原的节日。</p>
+            <p>端午节有吃粽子、赛龙舟、挂艾草、佩香囊等习俗，已被列入世界非物质文化遗产名录。</p>
+        </div>
+        
+        <div class="section">
+            <h2>端午活动</h2>
+            <div class="activities">
+                <div class="activity">
+                    <h3>包粽子</h3>
+                    <p>亲手包制传统粽子，体验端午习俗。粽叶包裹糯米和各种馅料，蒸煮后香气四溢。</p>
+                </div>
+                <div class="activity">
+                    <h3>赛龙舟</h3>
+                    <p>观看或参与激动人心的龙舟比赛，感受团队协作的力量和传统文化的魅力。</p>
+                </div>
+                <div class="activity">
+                    <h3>挂艾草</h3>
+                    <p>门前悬挂艾草和菖蒲，寓意驱邪避害，祈求家人平安健康。</p>
+                </div>
+            </div>
+        </div>
+        
+        <footer>
+            <div class="blessing">端午安康，幸福绵长</div>
+            <p>祝您和家人度过一个愉快的端午节</p>
+        </footer>
+    </div>
+</body>
+</html>

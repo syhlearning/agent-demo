@@ -8,7 +8,7 @@ from langchain_core.tools import tool
 
 from db.llama_store import search as _vector_search
 from db.llama_store import upsert as _vector_upsert
-from tools.brand_context import get_project_scope, get_runtime_config
+from tools.brand_context import get_project_scope, get_runtime_config, project_url_from_config
 
 
 MEMORY_DOMAIN = "conversation_memory"
@@ -49,6 +49,11 @@ def _memory_metadata(scope: dict[str, str | bool], memory_type: str) -> dict[str
     }
 
 
+def _preview_url(runtime: ToolRuntime, current_file: str = "index.html") -> str:
+    file_path = (current_file or "index.html").strip() or "index.html"
+    return project_url_from_config(get_runtime_config(runtime), file_path)
+
+
 def _parse_decisions(decisions: str) -> list[str]:
     items = []
     for line in decisions.splitlines():
@@ -64,6 +69,7 @@ def _format_project_memory(memory: dict[str, Any]) -> str:
     return (
         f"项目记忆更新时间：{memory.get('updated_at', '')}\n"
         f"当前文件：{memory.get('current_file', 'index.html')}\n"
+        f"预览链接：{memory.get('preview_url') or '未记录'}\n"
         f"项目摘要：\n{memory.get('summary', '')}\n\n"
         f"关键决策：\n{decision_text}"
     )
@@ -104,6 +110,8 @@ def update_project_memory(
         current_file: 当前主页面文件，通常是 index.html。
     """
     scope = _scope(runtime)
+    clean_file = (current_file or "index.html").strip() or "index.html"
+    preview_url = _preview_url(runtime, clean_file)
     memory = {
         "user_id": scope["user_id"],
         "brand_id": scope["brand_id"],
@@ -111,7 +119,8 @@ def update_project_memory(
         "thread_id": scope["thread_id"],
         "summary": summary.strip(),
         "decisions": _parse_decisions(decisions),
-        "current_file": (current_file or "index.html").strip(),
+        "current_file": clean_file,
+        "preview_url": preview_url,
         "updated_at": _now(),
     }
 
@@ -132,7 +141,9 @@ def update_project_memory(
         f"{_format_project_memory(memory)}"
     )
     try:
-        _vector_upsert(vector_id, vector_text, metadata=_memory_metadata(scope, "project_memory"))
+        metadata = _memory_metadata(scope, "project_memory")
+        metadata["preview_url"] = preview_url
+        _vector_upsert(vector_id, vector_text, metadata=metadata)
     except Exception as e:
         return f"项目记忆已写入 store，但写入向量记忆失败：{e}"
 
@@ -165,6 +176,7 @@ def save_conversation_summary(summary: str, runtime: ToolRuntime, topic: str = "
         return "摘要不能为空，未保存。"
 
     scope = _scope(runtime)
+    preview_url = _preview_url(runtime)
     payload = {
         "user_id": scope["user_id"],
         "brand_id": scope["brand_id"],
@@ -172,6 +184,7 @@ def save_conversation_summary(summary: str, runtime: ToolRuntime, topic: str = "
         "thread_id": scope["thread_id"],
         "topic": topic,
         "summary": clean_summary,
+        "preview_url": preview_url,
         "updated_at": _now(),
     }
 
@@ -191,6 +204,7 @@ def save_conversation_summary(summary: str, runtime: ToolRuntime, topic: str = "
         f"brand_id: {scope['brand_id']}\n"
         f"project_id: {scope['project_id']}\n"
         f"thread_id: {scope['thread_id']}\n"
+        f"preview_url: {preview_url}\n"
         f"topic: {topic}\n\n"
         f"{clean_summary}"
     )
@@ -199,6 +213,7 @@ def save_conversation_summary(summary: str, runtime: ToolRuntime, topic: str = "
         metadata = _memory_metadata(scope, "conversation_summary")
         metadata["thread_id"] = str(scope["thread_id"])
         metadata["topic"] = topic
+        metadata["preview_url"] = preview_url
         _vector_upsert(vector_id, vector_text, metadata=metadata)
     except Exception as e:
         return f"thread 摘要已写入 store，但写入向量记忆失败：{e}"

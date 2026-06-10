@@ -63,6 +63,7 @@ async def index():
 async def upload(
     file: UploadFile = File(...),   # 前端上传的文件（multipart）
     doc_id: str = Form(...),        # 前端表单里的文档 ID
+    org_id: str = Form("starlinke"),
     user_id: str = Form("default-user"),
     brand_id: str = Form("default-brand"),
     project_id: str = Form(""),
@@ -70,7 +71,7 @@ async def upload(
 ):
     import tempfile
     from tools import parse_document_to_text, save_document_text
-    from tools.brand_context import save_brand_document_text
+    from tools.brand_context import _safe_segment, save_brand_document_text
 
     # 取文件扩展名（如 .pdf），让临时文件保持正确格式供 LlamaCloud 识别
     suffix = os.path.splitext(file.filename or "")[1]
@@ -84,14 +85,30 @@ async def upload(
     try:
         # LlamaCloud/文本解析 → LlamaIndex 分块存入向量数据库
         full_text = parse_document_to_text(tmp_path)
-        scoped_doc_id = f"{user_id}:{brand_id}:{doc_type}:{doc_id}"
-        chunks = save_document_text(scoped_doc_id, full_text)
+        safe_org_id = _safe_segment(org_id, "starlinke")
+        safe_user_id = _safe_segment(user_id, "default-user")
+        safe_brand_id = _safe_segment(brand_id, "default-brand")
+        safe_project_id = _safe_segment(project_id, "default-project") if project_id else ""
+        safe_doc_id = _safe_segment(doc_id, "document")
+        scoped_doc_id = f"{safe_org_id}:{safe_brand_id}:{doc_type}:{safe_doc_id}"
+        chunks = save_document_text(
+            scoped_doc_id,
+            full_text,
+            metadata={
+                "org_id": safe_org_id,
+                "brand_id": safe_brand_id,
+                "user_id": safe_user_id,
+                "project_id": safe_project_id,
+                "doc_type": doc_type,
+                "scope": "brand_document" if doc_type in {"brand_skill", "landing_page_rule", "product_doc", "reference"} else "knowledge",
+            },
+        )
 
         brand_saved = False
         if doc_type in {"brand_skill", "landing_page_rule", "product_doc", "reference"}:
             save_brand_document_text(
-                user_id=user_id,
-                brand_id=brand_id,
+                org_id=safe_org_id,
+                brand_id=safe_brand_id,
                 doc_id=doc_id,
                 doc_type=doc_type,
                 text=full_text,
@@ -101,9 +118,9 @@ async def upload(
 
         message = f"已解析并保存文档「{doc_id}」，自动分成 {chunks} 块"
         if brand_saved:
-            message += f"，并已写入品牌「{brand_id}」的 {doc_type} 资料"
-        if project_id:
-            message += f"，当前项目：{project_id}"
+            message += f"，并已写入公司「{safe_org_id}」品牌「{safe_brand_id}」的 {doc_type} 资料"
+        if safe_project_id:
+            message += f"，当前项目：{safe_project_id}"
         return JSONResponse({"ok": True, "message": message, "brandSaved": brand_saved})
     except Exception as e:
         # 捕获所有异常，统一返回 JSON，避免前端收到空响应报错

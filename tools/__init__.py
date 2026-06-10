@@ -397,7 +397,7 @@ def search_knowledge(query: str, top_k: int = 3) -> str:
             f"[{r['id']}] (score: {r['score']:.3f})\n{r['text']}" for r in results
         )
     except Exception as e:
-        return f"检索失败：{e}"
+        return f"检索失败：{e}"      
 
 
 def parse_document_to_text(file_path: str) -> str:
@@ -437,9 +437,9 @@ def parse_document_to_text(file_path: str) -> str:
     return full_text
 
 
-def save_document_text(doc_id: str, text: str) -> int:
+def save_document_text(doc_id: str, text: str, metadata: dict | None = None) -> int:
     """把已解析的文本保存到向量数据库，返回分块数。"""
-    return _vs_upsert_document(doc_id, text)
+    return _vs_upsert_document(doc_id, text, metadata=metadata)
 
 
 @tool
