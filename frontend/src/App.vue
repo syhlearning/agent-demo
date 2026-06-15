@@ -502,6 +502,22 @@ function applyPreviewFromMessages(msg: Message, payload: any): string | null {
   return found;
 }
 
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function revealCompleteMessage(msg: Message, target: string) {
+  if (!target || msg.content === target) return;
+  if (!target.startsWith(msg.content)) msg.content = "";
+
+  const step = target.length > 2000 ? 24 : 4;
+  for (let i = msg.content.length; i < target.length; i += step) {
+    msg.content = target.slice(0, Math.min(i + step, target.length));
+    scrollBottom();
+    await delay(10);
+  }
+}
+
 function showToast(msg: string, type: "success" | "error" = "success") {
   clearTimeout(toastTimer);
   toast.value = { visible: true, message: msg, type };
@@ -717,7 +733,7 @@ async function send() {
                 typeof lastMsg.content === "string" &&
                 !lastMsg.content.trim().startsWith("{") // 排除 structured output JSON
               ) {
-                aiMsg.content = lastMsg.content;
+                await revealCompleteMessage(aiMsg, lastMsg.content);
                 scrollBottom();
               }
             }
@@ -728,9 +744,13 @@ async function send() {
           continue; // values 处理完毕，跳到下一行
         }
 
-        // ── 第 4 关：只处理 messages/partial 事件 ───────────────────────
-        // 其他事件类型（metadata、messages/complete、end 等）不处理
-        if (currentEvent !== "messages/partial") continue;
+        // ── 第 4 关：处理模型消息事件 ───────────────────────────────────
+        // partial 是流式更新；complete 是不支持流式的节点兜底。
+        if (
+          currentEvent !== "messages/partial" &&
+          currentEvent !== "messages/complete"
+        )
+          continue;
 
         try {
           // messages/partial 事件的数据格式（LangGraph Server 固定格式）：
@@ -758,7 +778,11 @@ async function send() {
               (trimmed.startsWith("[") && !trimmed.startsWith("[PREVIEW:"))
             )
               continue;
-            aiMsg.content = msg.content;
+            if (currentEvent === "messages/complete") {
+              await revealCompleteMessage(aiMsg, msg.content);
+            } else {
+              aiMsg.content = msg.content;
+            }
             // 检测预览标记
             applyPreviewFromText(aiMsg, msg.content);
             scrollBottom();
@@ -833,7 +857,7 @@ async function handleReview(
                 typeof lastMsg.content === "string" &&
                 !lastMsg.content.trim().startsWith("{")
               ) {
-                aiMsg.content = lastMsg.content;
+                await revealCompleteMessage(aiMsg, lastMsg.content);
                 scrollBottom();
               }
             }
@@ -844,7 +868,11 @@ async function handleReview(
           continue;
         }
 
-        if (currentEvent !== "messages/partial") continue;
+        if (
+          currentEvent !== "messages/partial" &&
+          currentEvent !== "messages/complete"
+        )
+          continue;
         try {
           const payload = JSON.parse(line.slice(6));
           const msg = Array.isArray(payload) ? payload[0] : null;
@@ -860,7 +888,11 @@ async function handleReview(
               (trimmed.startsWith("[") && !trimmed.startsWith("[PREVIEW:"))
             )
               continue;
-            aiMsg.content = msg.content;
+            if (currentEvent === "messages/complete") {
+              await revealCompleteMessage(aiMsg, msg.content);
+            } else {
+              aiMsg.content = msg.content;
+            }
             applyPreviewFromText(aiMsg, msg.content);
             scrollBottom();
           }
