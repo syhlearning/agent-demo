@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 load_dotenv()
 
+from api.auth.router import router as auth_router
 from langchain_core._api.deprecation import LangChainPendingDeprecationWarning
 from langchain_core.load.load import Reviver
 from langgraph.checkpoint.serde import jsonplus
@@ -31,6 +32,14 @@ jsonplus.LC_REVIVER = Reviver(allowed_objects="core")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    try:
+        from db.init_db import init_auth_db
+
+        await init_auth_db()
+        print("[auth db] users and refresh_tokens ready")
+    except Exception as e:
+        print(f"[auth db] skipped: {e}")
+
     # llama_store 的 PGVectorStore 会自动建表（perform_setup=True）
     try:
         from db.checkpoint_cleanup import auto_cleanup_enabled, cleanup_old_checkpoints
@@ -44,6 +53,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+app.include_router(auth_router)
 
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 PROJECTS_DIR = os.path.join(BASE_DIR, "projects")

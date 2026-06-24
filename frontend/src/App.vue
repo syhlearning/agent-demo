@@ -197,6 +197,11 @@ type UserIdentity = {
   displayName: string;
 };
 
+type LoginPayload = UserIdentity & {
+  accessToken: string;
+  refreshToken: string;
+};
+
 const ORG_ID = "starlinke";
 const ORG_NAME = "starlinke";
 const DEFAULT_BRAND_ID = "default-brand";
@@ -254,9 +259,10 @@ function identityFromName(name: string): UserIdentity {
 }
 
 function loadStoredIdentity(): UserIdentity {
+  const storedAccessToken = sessionStorage.getItem("accessToken") ?? "";
   const storedId = sessionStorage.getItem("userId") ?? "";
   const storedDisplayName = sessionStorage.getItem("userDisplayName") ?? "";
-  if (!storedId) return { userId: "", displayName: "" };
+  if (!storedId || !storedAccessToken) return { userId: "", displayName: "" };
 
   const identity = storedDisplayName
     ? { userId: safeIdSegment(storedId, "default-user"), displayName: storedDisplayName }
@@ -273,17 +279,34 @@ const userId = ref(initialIdentity.userId);
 const userDisplayName = ref(initialIdentity.displayName);
 const userLabel = computed(() => userDisplayName.value || userId.value);
 
-function onLogin(name: string) {
-  const identity = identityFromName(name);
-  migrateConversationStorage(name, identity.userId);
+function onLogin(payload: LoginPayload) {
+  const identity = identityFromName(payload.userId);
+  migrateConversationStorage(payload.userId, identity.userId);
+  sessionStorage.setItem("accessToken", payload.accessToken);
+  sessionStorage.setItem("refreshToken", payload.refreshToken);
   sessionStorage.setItem("userId", identity.userId);
-  sessionStorage.setItem("userDisplayName", identity.displayName);
+  sessionStorage.setItem("userDisplayName", payload.displayName);
   userId.value = identity.userId;
-  userDisplayName.value = identity.displayName;
+  userDisplayName.value = payload.displayName;
   loadConversations();
 }
 
-function logout() {
+async function logout() {
+  const accessToken = sessionStorage.getItem("accessToken");
+  const refreshToken = sessionStorage.getItem("refreshToken");
+  if (accessToken) {
+    await fetch("/auth/logout", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    }).catch(() => undefined);
+  }
+
+  sessionStorage.removeItem("accessToken");
+  sessionStorage.removeItem("refreshToken");
   sessionStorage.removeItem("userId");
   sessionStorage.removeItem("userDisplayName");
   sessionStorage.removeItem("threadId");

@@ -5,6 +5,7 @@ build/
 dist/
 wheels/
 *.egg-info
+.DS_Store
 
 # Virtual environments
 .venv
@@ -13,3 +14,11 @@ wheels/
 .env
 .env.*
 !.env.example
+
+# Local editor/history artifacts
+.history/
+.claude/
+
+# Local database/runtime data
+agent-postgres/
+.langgraph_api/

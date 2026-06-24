@@ -1,0 +1,172 @@
+# 这是按当前项目写的“普通 docker compose 参考版”。
+# 你现在实际使用的是：
+#   langgraph up --docker-compose docker-compose.override.yml
+# 也就是 LangGraph 自动生成主 compose，再合并 override。
+#
+# 这个文件用于学习配置结构，不建议直接替换现有启动方式。
+
+name: agent
+
+services:
+  # LangGraph 的 HTTP API 服务。
+  # 前端 /threads 请求会访问宿主机 localhost:8123，
+  # 然后 Docker 把它转到容器内的 8000 端口。
+  langgraph-api:
+    image: agent-langgraph-api
+    container_name: agent-langgraph-api-standalone
+    restart: unless-stopped
+
+    ports:
+      - "8123:8000"
+
+    env_file:
+      - .env
+
+    environment:
+      # 容器之间通信要用 service name，不能用 localhost。
+      # 这是 LangGraph Server 自己连接 Postgres 用的地址。
+      POSTGRES_URI: postgres://postgres:postgres@langgraph-postgres:5432/postgres?sslmode=disable
+
+      # 这是你项目代码里 db/llama_store.py、db/vector_store.py 等模块读取的地址。
+      # 如果这些代码在容器里执行，也应该连 langgraph-postgres:5432。
+      DATABASE_URL: postgresql://postgres:postgres@langgraph-postgres:5432/postgres
+
+      # LangGraph 运行时队列/协调服务。
+      REDIS_URI: redis://langgraph-redis:6379
+
+      # LangGraph Server 在容器内监听 8000。
+      PORT: 8000
+      LANGGRAPH_SERVER_HOST: 0.0.0.0
+
+      # 告诉 LangGraph Server 你的图在哪里。
+      LANGSERVE_GRAPHS: '{"agent": "/deps/agent/agent_graph.py:graph"}'
+
+      # 对应 langgraph.json 里的 checkpointer/store。
+      LANGGRAPH_CHECKPOINTER: '{"provider": "postgres"}'
+      LANGGRAPH_STORE: '{"provider": "postgres"}'
+
+      # 这些是常见运行参数。
+      LANGGRAPH_RUNTIME_EDITION: postgres
+      N_WORKERS: 1
+      N_JOBS_PER_WORKER: 10
+
+    volumes:
+      # 这些就是你现在 docker-compose.override.yml 里写的 bind mount。
+      # 左边是你电脑上的项目文件，右边是容器里的路径。
+      - ./agent_graph.py:/deps/agent/agent_graph.py
+      - ./tools:/deps/agent/tools
+      - ./db:/deps/agent/db
+      - ./api:/deps/agent/api
+      - ./brand_data:/deps/agent/brand_data
+      - ./projects:/deps/agent/projects
+
+    depends_on:
+      langgraph-postgres:
+        condition: service_healthy
+      langgraph-redis:
+        condition: service_healthy
+
+    networks:
+      - agent-backend
+
+  # Postgres + pgvector。
+  # LangGraph thread、checkpoint、store、向量数据主要都存在这里。
+  langgraph-postgres:
+    image: pgvector/pgvector:pg16
+    container_name: agent-langgraph-postgres-standalone
+    restart: unless-stopped
+
+    ports:
+      # 宿主机 localhost:5433 -> 容器内 5432。
+      # 你在本机 Python 脚本里可以用 localhost:5433 连接。
+      - "5433:5432"
+
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+
+    volumes:
+      # 这是 named volume，真正保存数据库文件。
+      # 删除容器不会删除它；删除 volume 才会丢数据库数据。
+      - langgraph-data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+    networks:
+      - agent-backend
+
+  # Redis。
+  # LangGraph 用它做运行时队列/协调，不是你最主要的长期数据存储。
+  langgraph-redis:
+    image: redis:6
+    container_name: agent-langgraph-redis-standalone
+    restart: unless-stopped
+
+    volumes:
+      - redis-data:/data
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+    networks:
+      - agent-backend
+
+  # 你的 FastAPI 文件上传/静态文件服务。
+  # 当前 frontend/vite.config.ts 里 /upload、/projects、/api 代理到 localhost:8000。
+  # 你如果平时是在本机直接 uvicorn api.app:app，这个服务可以不用放进 compose。
+  fastapi:
+    image: agent-langgraph-api
+    container_name: agent-fastapi-standalone
+    restart: unless-stopped
+
+    entrypoint: []
+    command: uvicorn api.app:app --host 0.0.0.0 --port 8000 --reload
+
+    ports:
+      - "8000:8000"
+
+    env_file:
+      - .env
+
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@langgraph-postgres:5432/postgres
+
+    volumes:
+      - ./api:/deps/agent/api
+      - ./tools:/deps/agent/tools
+      - ./db:/deps/agent/db
+      - ./brand_data:/deps/agent/brand_data
+      - ./projects:/deps/agent/projects
+      - ./static:/deps/agent/static
+
+    working_dir: /deps/agent
+
+    depends_on:
+      langgraph-postgres:
+        condition: service_healthy
+
+    networks:
+      - agent-backend
+
+volumes:
+  # 等价于你当前看到的 Docker volume：agent_langgraph-data。
+  # Compose 会按项目名生成实际 volume 名，例如 agent_langgraph-data。
+  langgraph-data:
+
+  # Redis 的 /data。
+  redis-data:
+
+networks:
+  # 同一个 network 里的容器可以用 service name 互相访问：
+  # langgraph-api -> langgraph-postgres:5432
+  # langgraph-api -> langgraph-redis:6379
+  agent-backend:
+    driver: bridge

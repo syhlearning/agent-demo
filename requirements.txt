@@ -15,3 +15,8 @@ llama-cloud>=1.0
 fastapi
 uvicorn[standard]
 python-multipart
+sqlalchemy
+asyncpg
+pwdlib[argon2]
+python-jose[cryptography]
+pydantic-settings

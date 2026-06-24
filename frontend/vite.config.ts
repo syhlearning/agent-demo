@@ -20,6 +20,7 @@ export default defineConfig({
       "/upload": "http://localhost:8000",  // FastAPI：文件上传
       "/projects": "http://localhost:8000", // FastAPI：项目文件静态托管
       "/api": "http://localhost:8000",      // FastAPI：会话列表等 API
+      "/auth": "http://localhost:8000",     // FastAPI：JWT 登录/刷新/退出
     },
   },
 });
