@@ -185,9 +185,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted } from "vue";
+import { ref, computed, nextTick, onMounted, onUnmounted } from "vue";
 import { marked } from "marked";
 import type { Message, ToolCall, Conversation } from "./types";
+import {
+  AUTH_EXPIRED_EVENT,
+  authFetch,
+  clearAuthTokens,
+  ensureFreshAccessToken,
+  getAccessToken,
+  getRefreshToken,
+  saveAuthTokens,
+} from "./auth";
 import FileUpload from "./components/FileUpload.vue";
 import Login from "./components/Login.vue";
 
@@ -200,6 +209,8 @@ type UserIdentity = {
 type LoginPayload = UserIdentity & {
   accessToken: string;
   refreshToken: string;
+  expiresIn: number;
+  refreshExpiresIn: number;
 };
 
 const ORG_ID = "starlinke";
@@ -282,8 +293,12 @@ const userLabel = computed(() => userDisplayName.value || userId.value);
 function onLogin(payload: LoginPayload) {
   const identity = identityFromName(payload.userId);
   migrateConversationStorage(payload.userId, identity.userId);
-  sessionStorage.setItem("accessToken", payload.accessToken);
-  sessionStorage.setItem("refreshToken", payload.refreshToken);
+  saveAuthTokens(
+    payload.accessToken,
+    payload.refreshToken,
+    payload.expiresIn,
+    payload.refreshExpiresIn
+  );
   sessionStorage.setItem("userId", identity.userId);
   sessionStorage.setItem("userDisplayName", payload.displayName);
   userId.value = identity.userId;
@@ -291,9 +306,30 @@ function onLogin(payload: LoginPayload) {
   loadConversations();
 }
 
+function clearLocalSession() {
+  clearAuthTokens();
+  sessionStorage.removeItem("userId");
+  sessionStorage.removeItem("userDisplayName");
+  sessionStorage.removeItem("threadId");
+  sessionStorage.removeItem("threadCreated");
+  sessionStorage.removeItem("brandId");
+  sessionStorage.removeItem("projectId");
+  userId.value = "";
+  messages.value = [];
+  conversations.value = [];
+  threadId.value = getOrCreateThreadId();
+}
+
+function handleAuthExpired() {
+  clearLocalSession();
+  showToast("登录已过期，请重新登录", "error");
+}
+
 async function logout() {
-  const accessToken = sessionStorage.getItem("accessToken");
-  const refreshToken = sessionStorage.getItem("refreshToken");
+  await ensureFreshAccessToken().catch(() => false);
+
+  const accessToken = getAccessToken();
+  const refreshToken = getRefreshToken();
   if (accessToken) {
     await fetch("/auth/logout", {
       method: "POST",
@@ -305,18 +341,7 @@ async function logout() {
     }).catch(() => undefined);
   }
 
-  sessionStorage.removeItem("accessToken");
-  sessionStorage.removeItem("refreshToken");
-  sessionStorage.removeItem("userId");
-  sessionStorage.removeItem("userDisplayName");
-  sessionStorage.removeItem("threadId");
-  sessionStorage.removeItem("threadCreated");
-  sessionStorage.removeItem("brandId");
-  sessionStorage.removeItem("projectId");
-  userId.value = "";
-  messages.value = [];
-  conversations.value = [];
-  threadId.value = getOrCreateThreadId();
+  clearLocalSession();
 }
 
 function getOrCreateThreadId() {
@@ -439,7 +464,7 @@ async function switchConversation(tid: string) {
 
 async function loadThreadMessages(tid: string) {
   try {
-    const res = await fetch(`/threads/${tid}/state`);
+    const res = await authFetch(`/threads/${tid}/state`);
     if (!res.ok) return;
     const state = await res.json();
     const msgs = state?.values?.messages;
@@ -471,11 +496,16 @@ function openInBrowser() {
 }
 
 onMounted(() => {
+  window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
   loadConversations();
   // 如果已有会话，加载历史消息
   if (sessionStorage.getItem("threadCreated")) {
     loadThreadMessages(threadId.value);
   }
+});
+
+onUnmounted(() => {
+  window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
 });
 
 // 解析 AI 消息中的 [PREVIEW:...] 标记
@@ -615,7 +645,7 @@ async function send() {
       formData.append("user_id", userId.value);
       formData.append("brand_id", brandId.value);
       formData.append("project_id", projectId.value);
-      const uploadRes = await fetch("/upload", {
+      const uploadRes = await authFetch("/upload", {
         method: "POST",
         body: formData,
       });
@@ -630,7 +660,7 @@ async function send() {
     }
 
     if (!sessionStorage.getItem("threadCreated")) {
-      const createRes = await fetch(`/threads`, {
+      const createRes = await authFetch(`/threads`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ thread_id: threadId.value }),
@@ -640,7 +670,7 @@ async function send() {
       sessionStorage.setItem("threadCreated", "1");
     }
 
-    const res = await fetch(
+    const res = await authFetch(
       `/threads/${threadId.value}/runs/stream`,
       {
         method: "POST",
@@ -837,7 +867,7 @@ async function handleReview(
   scrollBottom();
 
   try {
-    const res = await fetch(`/threads/${threadId.value}/runs/stream`, {
+    const res = await authFetch(`/threads/${threadId.value}/runs/stream`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

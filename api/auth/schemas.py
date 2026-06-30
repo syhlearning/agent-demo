@@ -2,22 +2,27 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
 class UserCreate(BaseModel):
     username: str = Field(min_length=3, max_length=64, pattern=r"^[0-9A-Za-z._-]+$")
     password: str = Field(min_length=8, max_length=128)
-    email: str | None = Field(default=None, max_length=320)
+    email: EmailStr | None = Field(default=None, max_length=320)
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_empty_email(cls, value: str | None) -> str | None:
+        if value is None or value == "":
+            return None
+        return value
 
     @field_validator("email")
     @classmethod
-    def validate_email(cls, value: str | None) -> str | None:
-        if value is None or value == "":
+    def normalize_email_case(cls, value: EmailStr | None) -> str | None:
+        if value is None:
             return None
-        if "@" not in value:
-            raise ValueError("email must contain @")
-        return value.lower()
+        return str(value).lower()
 
 
 class LoginRequest(BaseModel):

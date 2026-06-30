@@ -57,7 +57,7 @@
 
         <div v-if="error" class="login-error">{{ error }}</div>
 
-        <button class="login-btn" :disabled="!canSubmit || loading">
+        <button class="login-btn" :disabled="loading">
           {{ loading ? "处理中..." : mode === "login" ? "登录 ↵" : "注册并进入 ↵" }}
         </button>
       </form>
@@ -66,13 +66,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted } from "vue";
+import { ref, onMounted } from "vue";
 
 type AuthMode = "login" | "register";
 
 type AuthResponse = {
   access_token: string;
   refresh_token: string;
+  expires_in: number;
+  refresh_expires_in: number;
   user: {
     username: string;
   };
@@ -83,6 +85,18 @@ type LoginPayload = {
   displayName: string;
   accessToken: string;
   refreshToken: string;
+  expiresIn: number;
+  refreshExpiresIn: number;
+};
+
+type ValidationIssue = {
+  loc?: Array<string | number>;
+  msg?: string;
+  type?: string;
+};
+
+type ErrorResponse = {
+  detail?: string | ValidationIssue[];
 };
 
 const emit = defineEmits<{ login: [payload: LoginPayload] }>();
@@ -97,16 +111,77 @@ const inputEl = ref<HTMLInputElement | null>(null);
 
 onMounted(() => inputEl.value?.focus());
 
-const canSubmit = computed(() => {
-  const nameOk = username.value.trim().length >= 3;
-  const passwordOk = mode.value === "login"
-    ? password.value.length > 0
-    : password.value.length >= 8;
-  return nameOk && passwordOk;
-});
+const usernamePattern = /^[0-9A-Za-z._-]+$/;
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function validateForm(): string {
+  const name = username.value.trim();
+  const mail = email.value.trim();
+
+  if (!name) return "请输入用户名";
+  if (!password.value) return "请输入密码";
+
+  if (mode.value === "register") {
+    if (name.length < 3) return "用户名至少 3 个字符";
+    if (!usernamePattern.test(name)) return "用户名只能包含英文、数字、点、下划线和短横线";
+    if (password.value.length < 8) return "密码至少 8 位";
+    if (mail && !emailPattern.test(mail)) return "请输入正确的邮箱地址";
+  }
+
+  return "";
+}
+
+function messageFromIssue(issue: ValidationIssue): string {
+  const field = String(issue.loc?.at(-1) ?? "");
+  const type = issue.type ?? "";
+
+  if (field === "username") {
+    if (type.includes("string_too_short")) return "用户名至少 3 个字符";
+    if (type.includes("string_too_long")) return "用户名不能超过 64 个字符";
+    if (type.includes("string_pattern_mismatch")) return "用户名只能包含英文、数字、点、下划线和短横线";
+    return "请输入正确的用户名";
+  }
+
+  if (field === "password") {
+    if (type.includes("string_too_short")) return "密码至少 8 位";
+    if (type.includes("string_too_long")) return "密码不能超过 128 位";
+    return "请输入正确的密码";
+  }
+
+  if (field === "email") return "请输入正确的邮箱地址";
+  return issue.msg || "提交失败，请检查输入信息";
+}
+
+function friendlyAuthError(data: ErrorResponse | null, status: number): string {
+  const detail = data?.detail;
+
+  if (typeof detail === "string") {
+    const messages: Record<string, string> = {
+      "Username or email already exists": "用户名或邮箱已存在",
+      "Incorrect username or password": "用户名或密码错误",
+      "Inactive user": "账号已被禁用",
+    };
+    return messages[detail] || detail;
+  }
+
+  if (Array.isArray(detail) && detail.length > 0) {
+    return messageFromIssue(detail[0]);
+  }
+
+  if (status === 409) return "用户名或邮箱已存在";
+  if (status === 401) return "用户名或密码错误";
+  if (status === 422) return "提交失败，请检查输入信息";
+  return "认证失败，请稍后重试";
+}
 
 async function submit() {
-  if (!canSubmit.value || loading.value) return;
+  if (loading.value) return;
+
+  const validationMessage = validateForm();
+  if (validationMessage) {
+    error.value = validationMessage;
+    return;
+  }
 
   loading.value = true;
   error.value = "";
@@ -125,10 +200,10 @@ async function submit() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    const data = await response.json().catch(() => null);
+    const data = await response.json().catch(() => null) as AuthResponse | ErrorResponse | null;
 
     if (!response.ok) {
-      error.value = data?.detail || "认证失败";
+      error.value = friendlyAuthError(data as ErrorResponse | null, response.status);
       return;
     }
 
@@ -138,6 +213,8 @@ async function submit() {
       displayName: auth.user.username,
       accessToken: auth.access_token,
       refreshToken: auth.refresh_token,
+      expiresIn: auth.expires_in,
+      refreshExpiresIn: auth.refresh_expires_in,
     });
   } catch (err) {
     error.value = err instanceof Error ? err.message : "网络错误";

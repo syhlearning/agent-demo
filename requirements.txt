@@ -20,3 +20,4 @@ asyncpg
 pwdlib[argon2]
 python-jose[cryptography]
 pydantic-settings
+email-validator
