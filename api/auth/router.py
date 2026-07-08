@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from jose import JWTError
 from sqlalchemy import or_, select, update
@@ -36,6 +37,7 @@ from db.session import get_async_session
 
 # 所有认证接口都挂在 /auth 下，例如 /auth/login、/auth/refresh。
 router = APIRouter(prefix="/auth", tags=["auth"])
+logger = structlog.get_logger(__name__)
 
 
 async def _get_user_by_login(session: AsyncSession, login: str) -> User | None:
@@ -75,6 +77,13 @@ async def _issue_token_pair(session: AsyncSession, user: User) -> TokenResponse:
     await session.commit()
 
     now = utc_now()
+    logger.info(
+        "auth.token_pair_issued",
+        user_id=str(user.id),
+        username=user.username,
+        access_expires_at=access_expires_at.isoformat(),
+        refresh_expires_at=refresh_expires_at.isoformat(),
+    )
     return TokenResponse(
         # 前端拿 access_token 放进 Authorization: Bearer <token>。
         access_token=access_token,
@@ -130,6 +139,7 @@ async def register(
 
     existing_user = await session.scalar(stmt)
     if existing_user is not None:
+        logger.warning("auth.register_conflict", username=payload.username, has_email=payload.email is not None)
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username or email already exists")
 
     # 入库前把明文密码哈希化。
@@ -144,10 +154,12 @@ async def register(
     except IntegrityError:
         # 即使前面查过，数据库唯一索引仍然是最后一道并发保护。
         await session.rollback()
+        logger.warning("auth.register_integrity_conflict", username=payload.username, has_email=payload.email is not None)
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username or email already exists") from None
 
     # commit 后刷新，拿到数据库生成的 id、created_at 等字段。
     await session.refresh(user)
+    logger.info("auth.register_success", user_id=str(user.id), username=user.username)
     return await _issue_token_pair(session, user)
 
 
@@ -160,10 +172,13 @@ async def login(
 
     user = await _get_user_by_login(session, payload.username)
     if user is None or not verify_password(payload.password, user.hashed_password):
+        logger.warning("auth.login_failed", login=payload.username, reason="invalid_credentials")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect username or password")
     if not user.is_active:
+        logger.warning("auth.login_failed", user_id=str(user.id), username=user.username, reason="inactive_user")
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
 
+    logger.info("auth.login_success", user_id=str(user.id), username=user.username)
     return await _issue_token_pair(session, user)
 
 
@@ -188,11 +203,13 @@ async def refresh_token(
     ).with_for_update()
     stored_token = await session.scalar(stmt)
     if stored_token is None or stored_token.revoked_at is not None or _is_expired(stored_token.expires_at):
+        logger.warning("auth.refresh_failed", user_id=str(user_id), reason="invalid_or_expired_refresh_token")
         raise credentials_exception()
 
     # JWT 有效且数据库 token 有效后，还要确认用户仍然存在并处于启用状态。
     user = await session.get(User, user_id)
     if user is None or not user.is_active:
+        logger.warning("auth.refresh_failed", user_id=str(user_id), reason="missing_or_inactive_user")
         raise credentials_exception()
 
     # 签发新的 token 对。
@@ -215,6 +232,7 @@ async def refresh_token(
     )
     await session.commit()
 
+    logger.info("auth.refresh_success", user_id=str(user.id), username=user.username)
     return TokenResponse(
         access_token=access_token,
         refresh_token=new_refresh_token,
@@ -241,6 +259,12 @@ async def logout(
         # 防止用户拿自己的 access token 去撤销别人的 refresh token。
         user_id, jti = _decode_refresh_payload(payload.refresh_token)
         if user_id != current_user.id:
+            logger.warning(
+                "auth.logout_failed",
+                user_id=str(current_user.id),
+                refresh_user_id=str(user_id),
+                reason="refresh_token_user_mismatch",
+            )
             raise credentials_exception()
         stmt = (
             update(RefreshToken)
@@ -263,6 +287,7 @@ async def logout(
 
     await session.execute(stmt)
     await session.commit()
+    logger.info("auth.logout_success", user_id=str(current_user.id), single_token=payload.refresh_token is not None)
     return MessageResponse(ok=True, message="Logged out")
 
 

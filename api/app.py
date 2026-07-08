@@ -12,10 +12,18 @@ from fastapi.staticfiles import StaticFiles
 
 load_dotenv()
 
+import structlog
+
 from api.auth.router import router as auth_router
+from api.logging_config import setup_logging
+from api.request_logging import install_request_logging
+from api.settings import settings
 from langchain_core._api.deprecation import LangChainPendingDeprecationWarning
 from langchain_core.load.load import Reviver
 from langgraph.checkpoint.serde import jsonplus
+
+setup_logging(settings.log_level)
+logger = structlog.get_logger(__name__)
 
 warnings.filterwarnings(
     "ignore",
@@ -36,9 +44,9 @@ async def lifespan(app: FastAPI):
         from db.init_db import init_auth_db
 
         await init_auth_db()
-        print("[auth db] users and refresh_tokens ready")
+        logger.info("auth_db.ready")
     except Exception as e:
-        print(f"[auth db] skipped: {e}")
+        logger.exception("auth_db.setup_failed", error=str(e))
 
     # llama_store 的 PGVectorStore 会自动建表（perform_setup=True）
     try:
@@ -46,13 +54,14 @@ async def lifespan(app: FastAPI):
 
         if auto_cleanup_enabled():
             result = cleanup_old_checkpoints()
-            print(f"[checkpoint cleanup] {result}")
+            logger.info("checkpoint_cleanup.finished", result=result)
     except Exception as e:
-        print(f"[checkpoint cleanup] skipped: {e}")
+        logger.exception("checkpoint_cleanup.failed", error=str(e))
     yield
 
 
 app = FastAPI(lifespan=lifespan)
+install_request_logging(app)
 app.include_router(auth_router)
 
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
@@ -93,6 +102,16 @@ async def upload(
         tmp_path = tmp.name  # 记住路径，后面用完要手动删
 
     try:
+        logger.info(
+            "upload.started",
+            filename=file.filename,
+            doc_id=doc_id,
+            org_id=org_id,
+            user_id=user_id,
+            brand_id=brand_id,
+            project_id=project_id or None,
+            doc_type=doc_type,
+        )
         # LlamaCloud/文本解析 → LlamaIndex 分块存入向量数据库
         full_text = parse_document_to_text(tmp_path)
         safe_org_id = _safe_segment(org_id, "starlinke")
@@ -131,9 +150,25 @@ async def upload(
             message += f"，并已写入公司「{safe_org_id}」品牌「{safe_brand_id}」的 {doc_type} 资料"
         if safe_project_id:
             message += f"，当前项目：{safe_project_id}"
+        logger.info(
+            "upload.finished",
+            filename=file.filename,
+            doc_id=safe_doc_id,
+            scoped_doc_id=scoped_doc_id,
+            chunks=chunks,
+            brand_saved=brand_saved,
+            doc_type=doc_type,
+        )
         return JSONResponse({"ok": True, "message": message, "brandSaved": brand_saved})
     except Exception as e:
         # 捕获所有异常，统一返回 JSON，避免前端收到空响应报错
+        logger.exception(
+            "upload.failed",
+            filename=file.filename,
+            doc_id=doc_id,
+            doc_type=doc_type,
+            error=str(e),
+        )
         return JSONResponse({"ok": False, "message": str(e)}, status_code=500)
     finally:
         # 无论成功还是失败都删掉临时文件，防止磁盘堆积
@@ -145,6 +180,7 @@ async def list_conversations(user_id: str):
     """扫描 /projects/{user_id}/ 子目录，返回 thread_id 列表。"""
     user_dir = os.path.join(PROJECTS_DIR, user_id)
     if not os.path.isdir(user_dir):
+        logger.info("conversations.list_empty", user_id=user_id)
         return JSONResponse([])
     threads = []
     for name in sorted(os.listdir(user_dir), reverse=True):
@@ -154,6 +190,7 @@ async def list_conversations(user_id: str):
                 "threadId": name,
                 "createdAt": int(os.path.getctime(full) * 1000),
             })
+    logger.info("conversations.listed", user_id=user_id, count=len(threads))
     return JSONResponse(threads)
 
 
@@ -162,7 +199,9 @@ async def checkpoint_cleanup_preview(days: int = Query(30, ge=1, le=3650)):
     """查看超过保留期的 LangGraph checkpoint 数量，不删除。"""
     from db.checkpoint_cleanup import checkpoint_cleanup_stats
 
-    return JSONResponse(checkpoint_cleanup_stats(days))
+    result = checkpoint_cleanup_stats(days)
+    logger.info("checkpoint_cleanup.stats", days=days, result=result)
+    return JSONResponse(result)
 
 
 @app.post("/api/checkpoint-cleanup")
@@ -173,4 +212,6 @@ async def checkpoint_cleanup(
     """清理超过保留期的 LangGraph 对话 checkpoint；不删除页面项目和品牌资料。"""
     from db.checkpoint_cleanup import cleanup_old_checkpoints
 
-    return JSONResponse(cleanup_old_checkpoints(days=days, dry_run=dry_run))
+    result = cleanup_old_checkpoints(days=days, dry_run=dry_run)
+    logger.info("checkpoint_cleanup.requested", days=days, dry_run=dry_run, result=result)
+    return JSONResponse(result)

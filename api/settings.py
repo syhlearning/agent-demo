@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 30
     sqlalchemy_echo: bool = True
+    log_level: str = "INFO"
 
     @property
     def async_database_url(self) -> str:

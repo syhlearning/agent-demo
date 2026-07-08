@@ -45,6 +45,23 @@ class SupervisorRoutingTests(unittest.TestCase):
 
         self.assertEqual(agent_graph._rule_based_supervisor_route(state), "researcher")
 
+    def test_brand_document_query_uses_knowledge_manager_route(self):
+        state = _state(
+            "当前公司ID：starlinke\n"
+            "当前公司名称：starlinke\n"
+            "当前用户ID：new-user\n"
+            "当前品牌ID：default-brand\n"
+            "当前项目ID：project-a\n\n"
+            "你能读取我存储的品牌文档吗？"
+        )
+        fake_model = FakeSupervisorModel("chat_agent")
+        with patch("agent_graph.supervisor_model", fake_model):
+            update = agent_graph.supervisor_node(state)
+
+        self.assertEqual(fake_model.calls, [])
+        self.assertEqual(update["next"], "knowledge_manager")
+        self.assertEqual(agent_graph.route_after_supervisor(update), "human_review")
+
     def test_plain_chat_routes_to_chat_agent(self):
         fake_model = FakeSupervisorModel("chat_agent")
         with patch("agent_graph.supervisor_model", fake_model):

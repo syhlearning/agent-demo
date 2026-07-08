@@ -85,12 +85,7 @@ load_dotenv()
 DB_URL = os.getenv("DATABASE_URL")
 USER_ID = os.getenv("USER_ID", "default-user")
 
-# model = init_chat_model(
-#     model="deepseek-chat",
-#     model_provider="openai",
-#     api_key=os.getenv("DEEPSEEK_API_KEY"),
-#     base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
-# )
+# DeepSeek 主模型配置已停用，保留作回退参考。
 model = init_chat_model(
     model="deepseek-v3",
     model_provider="openai",
@@ -98,6 +93,13 @@ model = init_chat_model(
     base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
     streaming=True,
 )
+
+# model = init_chat_model(
+#     model=os.getenv("OPENAI_MODEL", "gpt-5.5"),
+#     model_provider="openai",
+#     api_key=os.getenv("CODEX_API_KEY") or os.getenv("OPENAI_API_KEY") or "missing-openai-api-key",
+#     streaming=True,
+# )
 
 # Supervisor 专用模型（Qwen 支持 structured output，DeepSeek 该功能不稳定）
 supervisor_llm = init_chat_model(
@@ -240,7 +242,14 @@ from typing import Literal
 
 RESEARCHER_TOOLS = [web_search, get_weather]
 MEMORY_MANAGER_TOOLS = [save_user_info, get_user_info, delete_user_info]
-KNOWLEDGE_MANAGER_TOOLS = [save_knowledge, save_long_document, search_knowledge, parse_and_save_document]
+KNOWLEDGE_MANAGER_TOOLS = [
+    save_knowledge,
+    save_long_document,
+    search_knowledge,
+    parse_and_save_document,
+    get_brand_profile,
+    search_brand_skills,
+]
 CREATOR_TOOLS = [generate_wan_image, output_formatter]
 CODE_GENERATOR_TOOLS = [
     get_brand_profile,
@@ -271,7 +280,9 @@ MEMORY_MANAGER_PROMPT = (
 
 KNOWLEDGE_MANAGER_PROMPT = (
     "你是知识库管理专家。"
-    "负责保存笔记、文档，以及检索已保存的知识。"
+    "负责保存笔记、文档，检索已保存的知识，以及读取当前品牌上传的品牌文档、品牌 skill、落地页规则和产品资料。"
+    "当用户询问品牌文档、品牌资料、品牌规范、品牌 skill、落地页规则时，优先使用 get_brand_profile；需要按关键词查片段时使用 search_brand_skills。"
+    "品牌文档存放在当前公司/品牌 scope 下，不按 user_id 隔离；新人只要处于同一个 org_id/brand_id，也应该能读取。"
     "保存时 id 使用简短的中文语义命名，格式为'类型-标识'，例如'账单-2026-05'、'笔记-Python技巧'。"
     "更新已有内容时，先用 search_knowledge 找到原记录的 id，再用相同 id 覆盖。"
     "\n\n检索策略（Agentic RAG）：\n"
@@ -454,6 +465,10 @@ SEARCH_INTENT_RE = re.compile(
     r"(新闻|搜索|查一下|帮我查|最新|资料|联网|web\s*search)",
     re.IGNORECASE,
 )
+BRAND_DOC_INTENT_RE = re.compile(
+    r"(品牌文档|品牌资料|品牌规范|品牌\s*skill|brand\s*skill|落地页规则|产品资料)",
+    re.IGNORECASE,
+)
 PAGE_OR_CODE_INTENT_RE = re.compile(
     r"(网页|页面|落地页|HTML|CSS|JavaScript|JS|预览链接|页面链接|页面\s*URL|URL|打开地址|index\.html|项目文件|生成.*页|修改.*页|更新.*页|修复.*页|保存.*页)",
     re.IGNORECASE,
@@ -482,9 +497,12 @@ def _rule_based_supervisor_route(state) -> str:
         return ""
 
     has_page_or_code_intent = bool(PAGE_OR_CODE_INTENT_RE.search(user_text))
+    has_brand_doc_intent = bool(BRAND_DOC_INTENT_RE.search(user_text))
     has_weather_or_search_intent = bool(
         WEATHER_INTENT_RE.search(user_text) or SEARCH_INTENT_RE.search(user_text)
     )
+    if has_brand_doc_intent and not has_page_or_code_intent:
+        return "knowledge_manager"
     if has_weather_or_search_intent and not has_page_or_code_intent:
         return "researcher"
     return ""

@@ -559,6 +559,25 @@ function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function friendlyRunError(payload: any): string {
+  const errorType = String(payload?.error || "");
+  const message = String(payload?.message || "");
+
+  if (errorType.includes("AuthenticationError")) {
+    return "模型认证失败：请检查 .env 里的 CODEX_API_KEY / OPENAI_API_KEY 是否正确，并重启 LangGraph 服务。";
+  }
+  if (errorType.includes("RateLimitError")) {
+    return "模型调用被限流：请稍后重试，或检查账号额度。";
+  }
+  if (errorType.includes("NotFoundError")) {
+    return "模型不存在或当前账号无权限使用：请检查 OPENAI_MODEL 配置。";
+  }
+  if (message && message !== "An internal error occurred") {
+    return `Agent 运行失败：${message}`;
+  }
+  return "Agent 运行失败：请查看 LangGraph 后端日志。";
+}
+
 async function revealCompleteMessage(msg: Message, target: string) {
   if (!target || msg.content === target) return;
   if (!target.startsWith(msg.content)) msg.content = "";
@@ -729,6 +748,17 @@ async function send() {
         // 空行、注释行等都不处理，只处理 "data: {...}" 格式的行
         if (!line.startsWith("data: ")) continue;
 
+        if (currentEvent === "error") {
+          try {
+            aiMsg.content = friendlyRunError(JSON.parse(line.slice(6)));
+          } catch {
+            aiMsg.content = "Agent 运行失败：请查看 LangGraph 后端日志。";
+          }
+          aiMsg.streaming = false;
+          scrollBottom();
+          continue;
+        }
+
         // ── 第 3 关：处理 values 事件 ───────────────────────────────────
         // values 事件 = 某个节点执行完毕后的完整 state 快照
         // 数据结构：
@@ -896,6 +926,17 @@ async function handleReview(
           continue;
         }
         if (!line.startsWith("data: ")) continue;
+
+        if (currentEvent === "error") {
+          try {
+            aiMsg.content = friendlyRunError(JSON.parse(line.slice(6)));
+          } catch {
+            aiMsg.content = "Agent 运行失败：请查看 LangGraph 后端日志。";
+          }
+          aiMsg.streaming = false;
+          scrollBottom();
+          continue;
+        }
 
         // 从 values 事件中提取子 agent 的最终回复
         if (currentEvent === "values") {

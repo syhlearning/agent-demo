@@ -39,6 +39,7 @@ dependencies = [
     { name = "python-jose", extra = ["cryptography"] },
     { name = "python-multipart" },
     { name = "sqlalchemy" },
+    { name = "structlog" },
     { name = "tavily-python" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -72,6 +73,7 @@ requires-dist = [
     { name = "python-jose", extras = ["cryptography"], specifier = ">=3.5.0" },
     { name = "python-multipart", specifier = ">=0.0.29" },
     { name = "sqlalchemy", specifier = ">=2.0.49" },
+    { name = "structlog", specifier = ">=25.5.0" },
     { name = "tavily-python", specifier = ">=0.7.24" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.47.0" },
 ]

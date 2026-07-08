@@ -97,6 +97,7 @@ type ValidationIssue = {
 
 type ErrorResponse = {
   detail?: string | ValidationIssue[];
+  message?: string;
 };
 
 const emit = defineEmits<{ login: [payload: LoginPayload] }>();
@@ -153,7 +154,7 @@ function messageFromIssue(issue: ValidationIssue): string {
 }
 
 function friendlyAuthError(data: ErrorResponse | null, status: number): string {
-  const detail = data?.detail;
+  const detail = data?.detail ?? data?.message;
 
   if (typeof detail === "string") {
     const messages: Record<string, string> = {
@@ -171,7 +172,41 @@ function friendlyAuthError(data: ErrorResponse | null, status: number): string {
   if (status === 409) return "用户名或邮箱已存在";
   if (status === 401) return "用户名或密码错误";
   if (status === 422) return "提交失败，请检查输入信息";
-  return "认证失败，请稍后重试";
+  if ([502, 503, 504].includes(status)) return "认证服务暂时不可用，请确认后端服务正在运行";
+  if (status >= 500) return "认证服务内部错误，请查看后端日志";
+  return `认证请求失败（HTTP ${status}）`;
+}
+
+async function readAuthResponse(response: Response): Promise<AuthResponse | ErrorResponse | null> {
+  const text = await response.text();
+  if (!text) return null;
+
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    return { message: text.slice(0, 200) };
+  }
+
+  try {
+    return JSON.parse(text) as AuthResponse | ErrorResponse;
+  } catch {
+    return { message: "认证服务返回了无法解析的响应" };
+  }
+}
+
+function friendlyNetworkError(err: unknown): string {
+  if (err instanceof TypeError) {
+    return "无法连接认证服务，请确认 FastAPI 后端已在 8000 端口正常运行";
+  }
+
+  if (err instanceof Error) {
+    const message = err.message.toLowerCase();
+    if (message.includes("socket hang up") || message.includes("failed to fetch")) {
+      return "认证服务连接被断开，请重启 8000 端口上的后端服务";
+    }
+    return err.message;
+  }
+
+  return "网络错误，请确认后端服务是否正常运行";
 }
 
 async function submit() {
@@ -200,7 +235,7 @@ async function submit() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    const data = await response.json().catch(() => null) as AuthResponse | ErrorResponse | null;
+    const data = await readAuthResponse(response);
 
     if (!response.ok) {
       error.value = friendlyAuthError(data as ErrorResponse | null, response.status);
@@ -217,7 +252,7 @@ async function submit() {
       refreshExpiresIn: auth.refresh_expires_in,
     });
   } catch (err) {
-    error.value = err instanceof Error ? err.message : "网络错误";
+    error.value = friendlyNetworkError(err);
   } finally {
     loading.value = false;
   }
